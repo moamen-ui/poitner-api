@@ -16,13 +16,16 @@ inside a workspace hard delete), R15, R17 (no new endpoint and no new audited ac
 
 **Owner approval (Part B only) — given 2026-09-24 by Moamen (owner), who selected "Approve Part B" whose text was, verbatim:**
 `Approved to drop users.owner_id, users.approval_status, ux_users_email_owner_live, IX_users_owner_id, fk_users_workspaces_owner_id and make users.role_id super-admin-only (DB-11f Part B), 2026-09-24.`
-Paste it verbatim into the Part B PR and the two markers. Part B still ships only after Part A has been live ≥ 24 h, P1–P5 pass on production, and the R11 rehearsal passes.
+Paste it verbatim into the Part B PR and the two markers. Part B still ships only after Part A has been live ≥ 24 h, P1–P5 pass on production, and the R11 rehearsal passes (plus the blocking checks the cross-review added: P6b, P9, P11 — §9).
 
 **Owner decisions answered 2026-09-24:** D11f.1 = two releases; D11f.2 = keep `role_id`, super-admin-only; D11f.3 = home = earliest membership. D11f.4–D11f.7: the recommended defaults below apply.
-→ owner: ________ date: ________
+→ owner: Moamen, date: 2026-09-24 (recorded above).
 
-**Status: written 2026-09-24, not implemented.** Verified against `pointer-api` @ `8f97871` (81 migrations, newest
-`20260923220301_AddWorkspacesPauseAndDeletionState`) and `pointer-dashboard` @ `c463777` (`react/package.json:13` `"@moamen-ui/pointer-react": "^1.0.50"`).
+**Status: written 2026-09-24; cross-reviewed 2026-09-24 (Gemini 3.8 Flash + Opus, `docs/db/reviews/REVIEW-DB11F-2026-09-24.md`), every finding verified and adjudicated in §12; not implemented.**
+Re-verified against `pointer-api` @ `0d5f75a` (81 migrations, newest `20260923220301_AddWorkspacesPauseAndDeletionState`). Between the first
+verification base `8f97871` and `0d5f75a` the only production-code change is `Application/Common/Email/EmailLayout.cs` (unrelated), so every
+Application/Infrastructure/API/Domain line number below is unchanged. Test and CI line numbers were re-anchored at `0d5f75a`.
+`pointer-dashboard` @ `c463777` (`react/package.json:13` `"@moamen-ui/pointer-react": "^1.0.50"`).
 
 ## 0. Owner decisions (defaults apply unless the owner answers before Part A is merged)
 
@@ -30,11 +33,12 @@ Paste it verbatim into the Part B PR and the two markers. Part B still ships onl
 |---|---|---|---|
 | **D11f.1** | One release or two? | **Two** (Part A code-only, then Part B contract, at least 24 h apart; §9). The old columns still have ~40 readers, so a single-release drop would make a code rollback lose data. With two releases, rolling back Part B is lossless in behaviour because Part A code reads none of the columns (§8). | One release (drop + code switch together). Not recommended. |
 | **D11f.2** | What becomes of `users.role_id`? It is **not** legacy: it is how every super-admin check works today (`identity.Role?.IsSuperAdmin`, ~30 sites, §2). | **Keep the column, make it nullable, and set it NULL for every non-super-admin** (Part B). It becomes the *platform role*: non-null only for super admins, pointing at the global super-admin role. No super-admin code path changes. This also removes a latent FK bug (§2 "Latent bug"). | (B) Replace it with `users.is_super_admin boolean` and drop `role_id` + `FK_users_roles_role_id` + `IX_users_role_id`. That means ~30 read sites, JWT/`/me`/profile sourcing the super role from `roles`, and ~200 test edits. It would be its own doc (DB-11g). |
-| **D11f.3** | What is the "home workspace"? It drives the `isHome` badge (dashboard `Shell.tsx:316`, `LoginPage.tsx:146`; widget `templates.ts:71`) and the workspace named in the password-reset / password-changed / e-mail-change mails. | **The workspace of the identity's earliest membership row of any state** (`ORDER BY joined_at, id`). Pre-check **P3** proves this equals `users.owner_id` for every production row. No client change. | (b) A new `workspace_memberships.is_home` column plus backfill: exact, but more moving parts and re-home logic. (c) Drop `IsHome`: a client contract change. |
-| **D11f.4** | What happens to an identity with **no membership row anywhere** (not a super admin, not a merged row) whose legacy `owner_id` points at the workspace being deleted? | This shape is unreachable (invariant **I1**, §3.1; **P1** proves 0 rows). Part A: `HardDeleteAsync` **throws** and deletes nothing, loudly, instead of guessing. Part B: the identity no longer references any workspace, so it simply survives. | Delete it on sight. This cannot be expressed without `owner_id`. |
+| **D11f.3** *(owner-answered — kept)* | What is the "home workspace"? It drives the `isHome` badge (dashboard `Shell.tsx:316`, `LoginPage.tsx:146`; widget `templates.ts:71`) and the workspace named in the password-reset / password-changed / e-mail-change mails. | **The workspace of the identity's earliest membership row of any state** (`ORDER BY joined_at, id`). Pre-check **P3** proves this equals `users.owner_id` for every production row. No client change. The cross-review proposed "prefer a live membership" (Gemini LOW, §12 G14). **Rejected for home**: home never picks the session workspace (the picker lists only live candidates, and `IsHome` is only a flag on them), and "any state" is exactly today's `owner_id` semantics. A live-first rule is a possible later owner change, not part of this doc. | (b) A new `workspace_memberships.is_home` column plus backfill: exact, but more moving parts and re-home logic. (c) Drop `IsHome`: a client contract change. |
+| **D11f.4** | What happens to an identity with **no membership row anywhere** (not a super admin, not a merged row) whose legacy `owner_id` points at the workspace being deleted? | **P1** must print 0 rows before Part A ships (blocking). Part A also makes the shape impossible to create going forward: each of the 8 identity-creating sites saves the identity and its first membership in **one** `SaveChanges` (task A15; cross-review Opus). If such a row still exists, Part A's `HardDeleteAsync` **refuses with `Result.Failure` before any side effect** (read-only pre-flight, §3.2), and an in-transaction throw remains as a backstop. Either way nothing is deleted and the failure is loud. Part B: the identity references no workspace, so it simply survives. | Delete it on sight. This cannot be expressed without `owner_id`. |
 | **D11f.5** | Drop the super-admin `Pending`/`Rejected` login branches that read `users.approval_status`? | **Yes.** `AdminSeeder` forces the super admin to `Approved` on every boot (`AdminSeeder.cs:150,160`), and **P4** proves it. | Keep them: they would need a new column. |
 | **D11f.6** | Refuse API-key login with a **null-owner key held by a non-super-admin** (a pre-DB-11a leftover)? Today it signs in with no workspace and the *legacy* identity role. | **Yes, refuse it** (`InvalidApiKey`, audit reason `invalid_credentials`). **P5** must print 0 rows. | Keep today's behaviour. |
-| **D11f.7** | Profile page `roleName` (`GET /api/me/profile`, `GET /api/admin/users/{id}/profile`) today shows `users.role_id`, the role at **creation**, even after a role change or in another workspace. | **Show the current role**: the caller-workspace membership's role (no workspace in hand → the home membership's role; super admin → platform role). This is a bug fix. | Keep the stale creation-time role. |
+| **D11f.7** *(default refined by the cross-review; not an owner-answered decision; owner may confirm)* | Profile page `roleName` (`GET /api/me/profile`, `GET /api/admin/users/{id}/profile`) today shows `users.role_id`, the role at **creation**, even after a role change or in another workspace. | **Show the current role**: super admin → platform role; caller has a workspace → that workspace's **live** membership role; no workspace in hand → the earliest **live** membership's role, else the earliest of any state (Gemini MEDIUM, §12 G4). This is a bug fix. It also removes the `Include(u => u.Role)` that today 404s the profile of a member whose creation role belongs to another workspace (Opus MEDIUM, §12 O6). | Keep the stale creation-time role. |
+| **D11f.8** *(new, cross-review Opus LOW)* | `AdminSeeder` promotes whichever identity matches `ADMIN__EMAIL`, including a workspace member. After DB-11f, super admins must hold no memberships, because the delete rule excludes them. | **Refuse the promotion** (the seeder's reconcile step logs `super-admin reconcile skipped: … (DB-11f)` and boot continues; task A17). | Keep promoting (then the promoted member's workspace deletion is refused by the I1 pre-flight). |
 
 ## 1. Goal
 
@@ -51,13 +55,13 @@ User-visible effect: none by design. Two deliberate corrections come with it: D1
 null-owner key stops working). Workspace deletion deletes exactly the same accounts, which P2 proves on production data. That matches the owner's D18.10
 wording, "accounts that belong only to this workspace" (`DB-18…md:443`).
 
-## 2. Prerequisites (verified facts, 2026-09-24 @ `8f97871`)
+## 2. Prerequisites (verified facts, 2026-09-24 @ `8f97871`, re-verified @ `0d5f75a`)
 
 **How the inventory was made (repeatable, used again as acceptance in §7).** A scratch copy from `git archive HEAD` had
 `[System.Obsolete("DB11F_<X>")]` added to `User.OwnerId`, `User.RoleId`, `User.Role`, `User.ApprovalStatus` and `Role.Users`, then was built with
 `dotnet build Pointer.sln --no-incremental`. Every CS0618 warning is one use of a legacy member **on `User`**. This distinguishes them from
-`WorkspaceMembership.OwnerId/RoleId/ApprovalStatus`, `Invite.RoleId`, etc. Result: 541 sites. 70 are outside `Tests/` (below). 471 are in 50 test files.
-The script is in §7 criterion 2.
+`WorkspaceMembership.OwnerId/RoleId/ApprovalStatus`, `Invite.RoleId`, etc. First count (at `8f97871`): 541 sites. The corrected count is in the note below.
+The script is in §7 criterion 2. *(Re-run at `0d5f75a` with the corrected script, §12 O7, with `Role.Users` also marked: **543 occurrences, 73 outside `Tests/`** (72 on `User` + 1 `Role.Users`, counted per line+column: `AdminSeeder.cs:158` and `:160` carry two each), **470 in 50 test files**.)*
 
 **Schema being changed** (snapshot `Infrastructure/Migrations/AppDbContextModelSnapshot.cs`, `User` entity block `:2119-2266`, relationships `:3245-3266`)
 - `approval_status integer NOT NULL DEFAULT 1` — snapshot `:2133-2137`; `User.cs:28-32`; `UserMapping.cs:41-43`; created by `20260624144403_AddUserApprovalStatus.cs:13-18`.
@@ -78,7 +82,7 @@ The script is in §7 criterion 2.
 | `Application/Services/Implementation/TenantService.cs:680-685` | OwnerId | **read** `usersCreatedHere = Users.Where(u => u.OwnerId == ws)` | §3.2 | A |
 | `TenantService.cs:716` | OwnerId | write (re-home) | §3.2 maintenance, deleted in B | A→B |
 | `TenantService.cs:767-791` `IdentitiesDeletedWithWorkspace` | OwnerId | **read** (delete set + DB-18 preview, `WorkspaceLifecycleService.cs:666-671`) | §3.2 | A |
-| `Infrastructure/AppDbContext.cs:108` | OwnerId | **read** (User filter null-tenant branch; dead in prod: `docker-compose.prod.yml:32` `Tenancy__StrictNullTenantIsolation: "true"`) | `!e.Memberships.Any()` | A |
+| `Infrastructure/AppDbContext.cs:108` | OwnerId | **read** (User filter null-tenant branch; dead in prod: `docker-compose.prod.yml:32` `Tenancy__StrictNullTenantIsolation: "true"`) | platform role `e.Role != null && e.Role.IsSuperAdmin` (§3.3; not `!e.Memberships.Any()`, §12 O1) | A |
 | `AuthService.cs:243` (reset mail), `:386` (password-changed mail), `:456` (e-mail-change mail) | OwnerId | **read** (workspace named in mail) | `HomeWorkspaceIdAsync` (D11f.3) | A |
 | `AuthService.cs:880` (login picker), `:1130` (`BuildMeAsync` → `/me.workspaces`) | OwnerId | **read** (`WorkspaceChoice.IsHome`, `:1160`) | `HomeWorkspaceIdAsync` | A |
 | `AuthService.cs:752,761` (password login, super-admin branch), `:1230,1239` (null-owner API key branch) | ApprovalStatus | **read** | branches deleted (D11f.5) | A |
@@ -93,7 +97,7 @@ The script is in §7 criterion 2.
 | `.Include(u => u.Role)` / `.ThenInclude(u => u.Role)`: `ApiKeyService.cs:78`, `AuthService.cs:214`, `DemoService.cs:370`, `ImpersonationService.cs:64`, `MembershipService.cs:27,36`, `MfaService.cs:69`, `PreferencesService.cs:39`, `ProfileService.cs:32,45` | Role | loads the platform role | unchanged | — |
 | `MembershipService.cs:131-136` (`NewIdentity`) | RoleId, OwnerId, ApprovalStatus | write | removed in B | B |
 | `DemoService.cs:151-156` (`ProvisionAsync`), `:292` `demoUser.Role = role;` | RoleId, OwnerId, ApprovalStatus, Role | write | removed in B (`:292` **must** go, §3.5) | B |
-| `API/Seed/AdminSeeder.cs:148,150,158,160` | RoleId, ApprovalStatus | write (super admin) | `:150,:160` removed in B; `:148,:158` stay | B |
+| `API/Seed/AdminSeeder.cs:148,150,158,160` | RoleId, ApprovalStatus | write at `:148,:150`; **read-then-write** reconcile at `:158,:160` (`if (user.X != …) user.X = …`) — super admin only | `:150,:160` removed in B; `:148,:158` stay; D11f.8 guard added in A (task A17) | A (guard) / B |
 | `Infrastructure/Mappings/UserMapping.cs:29,39,41,50,53,56,69-71` | all | mapping | B | B |
 
 No other consumer exists. There are no mapper libraries (`grep -l "AutoMapper\|Mapster" */*.csproj` → none) and no `User` entity serialization. There is
@@ -106,27 +110,47 @@ no string-based EF access (`EF.Property`, `Include("Role")` → 0). The only raw
 - Memberships are removed **only** by a workspace hard delete: `TenantService.cs:673`. Nothing else calls `Remove`/`RemoveRange` on `WorkspaceMembership`.
   Ending a membership keeps the row (`MembershipService.cs:206-212` `EndAsync` sets `LeftAt`), and erase ends memberships through `EndAsync`
   (`IdentityEraseService.cs:242-243`).
-- Every identity is created together with its first membership: `NewIdentity` (`MembershipService.cs:117-138`, 7 callers: `InviteService.cs:760,911,1127`,
-  `UserService.cs:168`, `TenantService.cs:227`, `AuthService.cs:1356,1488`) is always followed by `JoinAsync`. `DemoService.ProvisionAsync` creates the
-  membership itself. The DB-11a backfill created memberships for **every** workspace-scoped `users` row, live or soft-deleted (`DB-11a…md:308-332`).
+- Every identity is created **in the same request** as its first membership, but **not atomically** (cross-review Opus MEDIUM, verified). All 8 creator sites
+  save the identity in one `SaveChangesAsync` and the membership in a later one, often with e-mail or notification work in between. A crash in that window leaves
+  a membership-less identity, which is I1's forbidden shape:
+  `TenantService.cs:236-237` → `:248`; `UserService.cs:175-176` → `SendAsync :179` → `:190`; `InviteService.cs:775-776` → notify/`SendAsync :788-792` → `:803`;
+  `InviteService.cs:924,941` → notify/`SendAsync :956-960` → `:970`; `InviteService.cs:1162-1164` → notify `:1170` → `:1180` (needs `invite.Id`);
+  `AuthService.cs:1363-1364` → `:1374`; `AuthService.cs:1498-1499` → `SendAsync :1502` → `:1513`; `DemoService.cs:172,183` → comments `:238` → `:249`.
+  Part A task A15 makes each one a single save. The DB-11a backfill created memberships for **every** workspace-scoped `users` row, live or soft-deleted (`DB-11a…md:308-332`).
 - Merged rows (`merged_into_user_id`) come only from the one-time DB-11a Migration 2. No runtime writer exists (`grep -rn MergedIntoUserId Application API Infrastructure` → readers
   `AuthService.cs:723`, `IdentityEraseService.cs:349` only). The production census found **0 merges, 0 aliases** (`DB-REVIEW-2026-09-22.md:137`).
 - The super admin has `owner_id` NULL and no membership (`DB-11a…md:561`; seeder `AdminSeeder.cs:132-165` writes no `OwnerId`).
-- Membership `Role` is loaded at every `ITokenService.Issue` call site with a membership: `AuthService.cs:927` (from `ListForIdentityAsync`, `.Include(m => m.Role)`
-  `MembershipService.cs:64`), `:1069`, `:1268`, `:1687` (`GetMembershipAsync`, `:44`), `DemoService.cs:293`, `:505`, `InviteService.cs:805`, `:1019`.
-  `AuthService.cs:1001` passes `null` for the super-admin MFA path.
+- Membership `Role` is loaded at every `ITokenService.Issue` call site with a membership. Via `.Include(m => m.Role)` (`MembershipService.cs:44,64`) for Issue at `AuthService.cs:927`, `:1069`, `:1268`, `:1687` and `DemoService.cs:505`.
+  Via explicit assignment before Issue at `DemoService.cs:293` (Issue `:294`), `InviteService.cs:805` (Issue `:814`) and `:1019` (Issue `:1020`). `AuthService.cs:1001` passes `null` for the super-admin MFA path.
+- **`Include(u => u.Role)` gates visibility where the query is filtered** (cross-review Opus MEDIUM, verified). `User.Role` is a required navigation in Part A, so `Include` is an
+  INNER JOIN against the **filtered** `Role` set (`AppDbContext.cs:196-204`: own-workspace + global roles only). Three queries run under the filters: `ProfileService.cs:28-33` (`GetByIdAsync`),
+  `:41-46` (`GetByPublicIdAsync`) and `PreferencesService.cs:38-41`. A member whose creation role (`users.role_id`) is owned by workspace W, viewed or acting from workspace X, is dropped by the join,
+  giving 404 for the profile and 404 for a preferences update. Pre-existing; fixed in Part A (tasks A7/A8). Every other `Include(u => u.Role)` uses `IgnoreQueryFilters()`
+  (`AuthService.cs:212-214`, `DemoService.cs:369-370`, `ImpersonationService.cs:63-64`, `MfaService.cs:68-69`, `MembershipService.cs:26-27,35-36`, `ApiKeyService.cs:76-78`).
+- **The User filter's null-tenant branch cannot use memberships** (cross-review Opus HIGH, verified). The `WorkspaceMembership` filter (`AppDbContext.cs:335-339`) is
+  `IsSuperAdmin || (TenantId != null && OwnerId == TenantId)`, and EF applies it to the `Memberships` navigation inside the `User` filter. For a null-tenant non-super caller every
+  membership is hidden, so `!e.Memberships.Any()` would be true for **every** identity.
+- **Role assignment is not workspace-bounded for an operator** (cross-review Opus MEDIUM, verified). `UserService.GetActiveRoleAsync` (`UserService.cs:910-915`) reads roles
+  under the `Role` filter, which a super admin bypasses (`AppDbContext.cs:198`). The escalation guard only restricts non-super callers (`:267-272`). So a super admin can give a membership in X
+  (a) a role **owned by W**, whose `workspace_memberships.role_id` Restrict FK then makes W's hard delete fail at `DeleteOwnedAsync<Role>` (`TenantService.cs:721`) with 23503, or
+  (b) the **`is_super_admin` role**, which a naive copy into `users.role_id` would turn into a platform super admin. Blocking pre-checks P6b and P11 (§9) and the non-escalating re-point (§3.2)
+  handle it inside DB-11f. The root guard at role assignment is follow-up F1 (§10).
+- **Both hosted deletion loops catch every exception** (`DemoCleanupService.cs:194` `catch (Exception)`, `WorkspaceDeletionService.cs:179` after the dedicated `DeletionPreconditionChangedException`
+  catch at `:166`). They log and retry on the next sweep. `WorkspaceDeletionService` logs a `Result.Failure` at Information as "skipped (cancelled)" (`:158-163`), so an I1 failure must be grepped by its message (§9).
+- Seeded global roles (`AdminSeeder.cs:16-25`): `Admin` (super), `Workspace Admin`, `Workspace Admin Deputy` (admin-tier), `Developer`, `PM`, `Tester`, `Client` (quick-access). The **least-privilege
+  global role** used by the Part A re-point and by B-2's `Down()` is the lowest-id global role with none of `is_super_admin`/`grants_admin`/`quick_access` (= `Developer` on a seeded database; P9 proves one exists).
 - `IUnitOfWork.UserAliases` exists (`Application/Abstractions/IUnitOfWork.cs:13`). `UserAlias.SourceWorkspaceId` holds the merged row's workspace (`DB-11a…md:303-304`).
 - The only `IMembershipService` implementations are `MembershipService.cs:13` and the test wrapper `Tests/Db17DemoServiceTests.cs:836`.
 
-**Latent bug found by this inventory (fixed in Part A).** An invite may pin a **tenant-owned** role (`RoleService.cs:55` stamps `OwnerId = TenantStamp.OwnerFor(...)`),
+**Latent bug found by this inventory (the `users.role_id` half is fixed in Part A; the membership half is guarded by P6b and follow-up F1).** An invite may pin a **tenant-owned** role (`RoleService.cs:55` stamps `OwnerId = TenantStamp.OwnerFor(...)`),
 and `NewIdentity` copies it into `users.role_id` (`InviteService.cs:760-766`). If that identity also belongs to X and its creation workspace W is hard-deleted,
 the re-home at `TenantService.cs:716` moves `owner_id` but leaves `role_id` pointing at W's role. `DeleteOwnedAsync<Role>(x => x.OwnerId == workspaceId)`
 (`:721`) then violates `FK_users_roles_role_id` (Restrict) with 23503, and the whole deletion fails. This is the same class as the DB-18 fix. Pre-check **P6** counts rows exposed to it.
 
 **Tests that pin today's behaviour and are touched** (all found by the scan; exact edits in §6)
-`Tests/WorkspaceTests.cs:168` (Sqlite `TestDb`, real FKs), `:381` (`Assert.Equal(23, HardDeleteOrder.Length)`), `:505-522` (reflects `GetProperty("OwnerId")!` on every
+`Tests/WorkspaceTests.cs:168` (Sqlite `TestDb`, real FKs), `:382` (`Assert.Equal(23, HardDeleteOrder.Length)`), `:505-522` (reflects `GetProperty("OwnerId")!` on every
 `HardDeleteOrder` type, which would null-ref once `User` has no `OwnerId`), `:530-618` (5b, DB-18 Gemini BLOCKER, seeds an erased identity **with no membership**);
-`Tests/Db18WorkspaceLifecycleTests.cs:2050-2123` (preview = delete parity); `Tests/WorkspaceMembershipTests.cs:527-620,786-794` (multi-workspace survivor re-homed);
+`Tests/Db18WorkspaceLifecycleTests.cs:2118-2190` (preview = delete parity); `Tests/WorkspaceMembershipTests.cs:527-620,786-794` (multi-workspace survivor re-homed);
 `Tests/WorkspaceSwitchTests.cs:260-296,741-742` (`IsHome`); `Tests/TenantQueryFilterTests.cs:144-257` (null-tenant user bucket); `Tests/TokenServiceTests.cs:9-21` (non-super
 identity without membership carries its identity role); `Tests/ChangePasswordTests.cs:296-361` (mail names the workspace; `SeedUser` `:178-221` already joins a membership).
 
@@ -159,6 +183,10 @@ identity without membership carries its identity role); `Tests/ChangePasswordTes
 - **Platform role** (D11f.2): `users.role_id`, meaningful **only** when it points at a role with `is_super_admin = true`. After Part B it is NULL for everyone else.
 - **Invariant I1** (proved on production by P1): every non-super-admin, non-merged `users` row with `owner_id = W` has at least one membership row in W. Consequence:
   "created in W and no membership elsewhere" (today's rule) ≡ "belongs only to W" (new rule) for every such row. P2 proves the two sets are equal per workspace.
+  Part A task A15 makes I1 true **by construction** for new identities (identity + first membership in one `SaveChanges`). Until then it held only by convention (§2).
+- **What each pre-check proves** (cross-review Gemini HIGH, §12 G2): **P1** = I1 (no membership-less legacy pointer). **P2** = delete-set parity, old rule vs new, per workspace, on production data (the only parity proof).
+  **P3** = I2 (home = legacy owner). **P4** = super-admin shape. **P5** = no stray non-super null-owner keys. **P6/P6b** = role-FK exposure. **P9** = least-privilege fallback role exists. **P11** = no membership holds the platform role.
+  A P2 `new_only` row whose user has `merged_into_user_id IS NOT NULL` would be a merged tombstone the old rule missed (it would have raised 23503 on `fk_users_merged_into_user`). That is an intended fix, not a parity failure. Paste it and explain. P7 (0 merged rows) makes this moot in production.
 - **Invariant I2** (proved by P3): `users.owner_id` = home workspace for every non-super-admin, non-merged row.
 
 ### 3.2 The one delete-set rule (Part A; replaces `TenantService.cs:758-791`, used by the delete and the DB-18 preview)
@@ -237,9 +265,11 @@ if (deleteIds.Count > 0)
 
 // DB-11f PART A ONLY — legacy pointer maintenance (deleted by DB-11f Part B task B6 together with
 // users.owner_id). Nothing READS these values for behaviour; this only stops the two legacy FKs
-// (fk_users_workspaces_owner_id, FK_users_roles_role_id) from blocking the deletes below. A
-// surviving identity that points here is re-pointed to its earliest membership elsewhere — both
-// columns, which also fixes the tenant-role 23503 (DB-11f §2 "Latent bug").
+// (fk_users_workspaces_owner_id, FK_users_roles_role_id) from blocking the deletes below. A surviving
+// identity that points here is re-pointed: owner_id → its earliest membership elsewhere; role_id →
+// the least-privilege global role (never an admin-tier or platform role, so the re-point can never
+// grant anything — cross-review Opus MEDIUM). The read-only pre-flight at the top of this method has
+// already refused every case the backstop throws below can hit.
 var workspaceRoleIds = await _unitOfWork
     .Repository<Role>()
     .Query()
@@ -256,32 +286,111 @@ var legacyPointers = await _unitOfWork
         && (u.OwnerId == workspaceId || workspaceRoleIds.Contains(u.RoleId))
     )
     .ToListAsync();
+var fallbackRoleId = legacyPointers.Any(u => workspaceRoleIds.Contains(u.RoleId))
+    ? await LeastPrivilegeGlobalRoleIdAsync()
+    : null;
 foreach (var u in legacyPointers)
 {
-    var other = await _unitOfWork
-        .Repository<WorkspaceMembership>()
-        .Query()
-        .IgnoreQueryFilters()
-        .Where(m => m.UserId == u.Id && m.OwnerId != workspaceId)
-        .OrderBy(m => m.JoinedAt)
-        .ThenBy(m => m.Id)
-        .Select(m => new { m.OwnerId, m.RoleId })
-        .FirstOrDefaultAsync();
-    if (other is null)
-        // Invariant I1 (DB-11f §3.1, D11f.4): unreachable — P1 proved 0 such rows in production.
-        throw new InvalidOperationException(
-            $"DB-11f invariant I1 broken: user {u.Id} references workspace {workspaceId} but has no membership in any other workspace and is not in the delete set."
-        );
     if (u.OwnerId == workspaceId)
-        u.OwnerId = other.OwnerId;
+    {
+        var otherOwner = await _unitOfWork
+            .Repository<WorkspaceMembership>()
+            .Query()
+            .IgnoreQueryFilters()
+            .Where(m => m.UserId == u.Id && m.OwnerId != workspaceId)
+            .OrderBy(m => m.JoinedAt)
+            .ThenBy(m => m.Id)
+            .Select(m => (Guid?)m.OwnerId)
+            .FirstOrDefaultAsync();
+        if (otherOwner is null)
+            // Backstop only (invariant I1, D11f.4) — the pre-flight refuses this before any side effect.
+            throw new InvalidOperationException(
+                $"DB-11f invariant I1 broken: user {u.Id} references workspace {workspaceId} but has no membership in any other workspace and is not in the delete set."
+            );
+        u.OwnerId = otherOwner;
+    }
     if (workspaceRoleIds.Contains(u.RoleId))
-        u.RoleId = other.RoleId;
+    {
+        if (fallbackRoleId is not int fallback)
+            // Backstop only — the pre-flight refuses this before any side effect (P9).
+            throw new InvalidOperationException(
+                "DB-11f: no global least-privilege role to re-point a surviving identity's legacy role_id."
+            );
+        u.RoleId = fallback;
+    }
     _unitOfWork.Repository<User>().Update(u);
 }
 ```
-Everything after (`DeleteOwnedAsync<Role>`, `AppEnvironment`, the workspace row, `SaveChangesAsync`, audit, files) is unchanged. The throw happens inside
-`ExecuteInTransactionAsync`, so nothing is deleted. The DB-18/DB-17 hosted loops log it as an error. They do not catch it: they catch only
-`DeletionPreconditionChangedException`.
+Everything after (`DeleteOwnedAsync<Role>`, `AppEnvironment`, the workspace row, `SaveChangesAsync`, audit, files) is unchanged.
+
+**Read-only pre-flight (Part A; cross-review Opus MEDIUM, §12 O2).** For an ordinary (operator) reason, `HardDeleteAsync` writes the `tenant.hard_deleted` audit row and deletes the owner's
+files **before** the transaction (`TenantService.cs:608-620`). A failure discovered inside the transaction would then leave a live workspace with no screenshots and an audit row claiming
+it was deleted. So insert, directly after the `if (isGuardedReason) { var stillDue … }` block (`:572-581`) and before `var commentCount` (`:585`):
+```csharp
+// DB-11f PART A ONLY (deleted by Part B task B6): read-only invariant pre-flight BEFORE any side
+// effect — the audit row and the file delete below run before the transaction for an ordinary
+// reason (cross-review Opus MEDIUM). Same predicates as the in-transaction backstop.
+var preflightDeleteSet = IdentitiesDeletedWithWorkspace(_unitOfWork, workspaceId).Select(u => u.Id);
+var preflightRoleIds = _unitOfWork
+    .Repository<Role>()
+    .Query()
+    .IgnoreQueryFilters()
+    .Where(r => r.OwnerId == workspaceId)
+    .Select(r => r.Id);
+var membershipsElsewhere = _unitOfWork
+    .Repository<WorkspaceMembership>()
+    .Query()
+    .IgnoreQueryFilters()
+    .Where(m => m.OwnerId != workspaceId);
+var i1Broken = await _unitOfWork
+    .Repository<User>()
+    .Query()
+    .IgnoreQueryFilters()
+    .Where(u =>
+        (u.OwnerId == workspaceId || preflightRoleIds.Contains(u.RoleId))
+        && !preflightDeleteSet.Contains(u.Id)
+        && !membershipsElsewhere.Any(m => m.UserId == u.Id)
+    )
+    .Select(u => u.Id)
+    .ToListAsync();
+if (i1Broken.Count > 0)
+    return Result.Failure(
+        $"DB-11f invariant I1 broken: user(s) {string.Join(",", i1Broken)} reference workspace {workspaceId} but belong to no other workspace; nothing was deleted."
+    );
+var needsRoleRepoint = await _unitOfWork
+    .Repository<User>()
+    .Query()
+    .IgnoreQueryFilters()
+    .AnyAsync(u => !preflightDeleteSet.Contains(u.Id) && preflightRoleIds.Contains(u.RoleId));
+if (needsRoleRepoint && await LeastPrivilegeGlobalRoleIdAsync() is null)
+    return Result.Failure(
+        "DB-11f: no global least-privilege role to re-point a surviving identity's legacy role_id; nothing was deleted."
+    );
+```
+and add this private helper next to `DeleteOwnedAsync` (`:799`):
+```csharp
+// DB-11f PART A ONLY (deleted by Part B task B6). The role a surviving identity's legacy
+// users.role_id is re-pointed to: global, live, and none of super/admin/quick-access — never grants
+// anything (cross-review Opus MEDIUM/LOW; same predicate as ClearUsersRoleIdForMembers.Down and P9).
+private Task<int?> LeastPrivilegeGlobalRoleIdAsync() =>
+    _unitOfWork
+        .Repository<Role>()
+        .Query()
+        .IgnoreQueryFilters()
+        .Where(r =>
+            r.OwnerId == null
+            && r.DeletedAt == null
+            && !r.IsSuperAdmin
+            && !r.GrantsAdmin
+            && !r.QuickAccess
+        )
+        .OrderBy(r => r.Id)
+        .Select(r => (int?)r.Id)
+        .FirstOrDefaultAsync();
+```
+The pre-flight returns `Result.Failure`, so nothing is audited, no file is touched and no row changes. `TenantsController.Delete` surfaces the message to the operator.
+`DemoCleanupService` logs it as a Warning (`:186-190`). `WorkspaceDeletionService` logs it at Information as "skipped (cancelled): <message>" (`:158-163`) and retries every sweep.
+So §9 greps every level for `DB-11f invariant I1`. The in-transaction throws stay as backstops (a row changed between pre-flight and transaction). Both loops catch them as generic exceptions and retry (§2).
 
 ### 3.3 Every other read, replaced (Part A)
 
@@ -295,10 +404,13 @@ Everything after (`DeleteOwnedAsync<Role>`, `AppEnvironment`, the workspace row,
 | `AuthService.cs:1192` | `Role? role = UserMapper.SessionRole(user, null);` |
 | `AuthService.cs:1227-1256` null-owner key branch | delete the two `ApprovalStatus` blocks `:1230-1246`; insert as the first statement of the `else { … }` the D11f.6 guard (task A5). Keep the `IsActive` and MFA blocks |
 | `UserMapper.cs:38` | `RoleId = role?.Id ?? 0,` + new static `SessionRole` (task A6) |
-| `PreferencesService.cs:58` / `:63` | `Role? role = UserMapper.SessionRole(user, null);` / `role = UserMapper.SessionRole(user, membership);` |
-| `ProfileService.cs:249` | D11f.7 role name (task A8) |
+| `PreferencesService.cs:39`, `:58` / `:63` | delete `.Include(u => u.Role)` (INNER-JOIN visibility gate, §2); `:58` → `var platformRole = await _memberships.PlatformRoleAsync(user.Id); Role? role = platformRole;`; `:63` → `role = membership is not null ? membership.Role : platformRole;` |
+| `ProfileService.cs:32`, `:45`, `:249` | delete both `.Include(u => u.Role)` (visibility gate, §2); D11f.7 role name (task A8) |
 | `JwtTokenService.cs:78-81` | `var role = UserMapper.SessionRole(u, membership); var roleId = membership?.RoleId ?? role?.Id ?? 0;` (comment in task A9) |
-| `AppDbContext.cs:108` | `\|\| (currentUser.TenantId == null && !strict && !e.Memberships.Any())` (comment in task A10) |
+| `AppDbContext.cs:108` | `\|\| (currentUser.TenantId == null && !strict && e.Role != null && e.Role.IsSuperAdmin)` — the platform role, i.e. exactly today's `owner_id IS NULL` set (P4). **Not** `!e.Memberships.Any()` (cross-review Opus HIGH: the membership filter hides every membership from a null-tenant caller, so every identity would match). Comment in task A10 |
+| `DemoService.cs:292` `demoUser.Role = role;` | **deleted in Part A** (Gemini MEDIUM, §12 G5): after `SessionRole` the token takes the membership's role, so nothing reads the identity navigation. In Part B it would also fix up `RoleId` (§3.5) |
+| 8 identity-creating sites (§2) | identity + first membership in **one** `SaveChangesAsync`; side effects after it (task A15; Opus MEDIUM) |
+| `AdminSeeder.cs:156` (reconcile `else`) | refuse to promote an identity that holds a membership (D11f.8, task A17) |
 
 `UserMapper.SessionRole` is the single rule: **a session's role is its membership's role. Without a membership, it is the identity's own role only for a super admin.** A membership whose
 `Role` is not loaded yields no role. It never falls back to the identity. All eight membership call sites load it (§2).
@@ -338,14 +450,14 @@ Two permitted scaffold differences, each to be noted in the PR:
 Any other operation, or any operation on another table → stop and report (R13).
 
 Class header (copy `20260923205702_DropUsersLegacyDemoColumns.cs`'s shape): `[ContractMigration("DB-11f")]` on the class. On the line directly above `/// <inheritdoc />` of `Up()`:
-`// DB-RULES: R2 contract approved <yyyy-mm-dd> by Moamen (owner, verbatim: "<the header approval line>"; docs/db/execution/DB-11f-drop-legacy-users-tenancy-columns.md)`
+`// DB-RULES: R2 contract approved 2026-09-24 by Moamen (owner, verbatim: "Approved to drop users.owner_id, users.approval_status, ux_users_email_owner_live, IX_users_owner_id, fk_users_workspaces_owner_id and make users.role_id super-admin-only (DB-11f Part B), 2026-09-24."; docs/db/execution/DB-11f-drop-legacy-users-tenancy-columns.md)`
 
 **Migration B-2 `ClearUsersRoleIdForMembers`** (scaffold after B-1 with no model change → empty `Up`/`Down`, snapshot unchanged). Hand-written body, nothing else:
 ```csharp
 [ContractMigration("DB-11f")]
 public partial class ClearUsersRoleIdForMembers : Migration
 {
-    // DB-RULES: R2 contract approved <yyyy-mm-dd> by Moamen (owner, verbatim: "<the header approval line>"; docs/db/execution/DB-11f-drop-legacy-users-tenancy-columns.md)
+    // DB-RULES: R2 contract approved 2026-09-24 by Moamen (owner, verbatim: "Approved to drop users.owner_id, users.approval_status, ux_users_email_owner_live, IX_users_owner_id, fk_users_workspaces_owner_id and make users.role_id super-admin-only (DB-11f Part B), 2026-09-24."; docs/db/execution/DB-11f-drop-legacy-users-tenancy-columns.md)
     /// <inheritdoc />
     protected override void Up(MigrationBuilder migrationBuilder)
     {
@@ -359,14 +471,15 @@ public partial class ClearUsersRoleIdForMembers : Migration
     /// <inheritdoc />
     protected override void Down(MigrationBuilder migrationBuilder)
     {
-        // Not the original values (they were legacy copies of the creation role; only the
-        // pre-db11f dump holds them). Refills every NULL so B-1's Down() can restore NOT NULL: the
-        // earliest membership's role, else the lowest-id global non-super role (P9 proves one exists).
+        // Not the original values (legacy copies of the creation role; only the pre-db11f dump holds
+        // them). Refills every NULL so B-1's Down() can restore NOT NULL, with the least-privilege
+        // global role ONLY — never a membership's role, which may be the platform role or another
+        // workspace's (cross-review Opus MEDIUM/LOW: privilege escalation). Nothing in the Part A code
+        // this rolls back to reads users.role_id for a non-super-admin. P9 proves the role exists.
         migrationBuilder.Sql(
-            "UPDATE users u SET role_id = COALESCE("
-                + "(SELECT m.role_id FROM workspace_memberships m WHERE m.user_id = u.id ORDER BY m.joined_at, m.id LIMIT 1), "
-                + "(SELECT r.id FROM roles r WHERE r.owner_id IS NULL AND NOT r.is_super_admin ORDER BY r.id LIMIT 1)) "
-                + "WHERE u.role_id IS NULL;"
+            "UPDATE users SET role_id = (SELECT r.id FROM roles r WHERE r.owner_id IS NULL "
+                + "AND r.deleted_at IS NULL AND NOT r.is_super_admin AND NOT r.grants_admin "
+                + "AND NOT r.quick_access ORDER BY r.id LIMIT 1) WHERE role_id IS NULL;"
         );
     }
 }
@@ -383,11 +496,11 @@ Historical migrations that reference these columns (`InitialCreate`, `AddUserApp
 |---|---|
 | `MembershipService.NewIdentity :131-136` | delete the comment `:131` and the lines `RoleId = firstRole.Id,`, `OwnerId = firstWorkspaceId,`, `ApprovalStatus = ApprovalStatus.Approved,`. **Signature unchanged** (7 callers + wrapper); add the XML remark in task B3 |
 | `DemoService.ProvisionAsync :151-156` | delete `RoleId = role.Id,`, the comment `:152-154`, `OwnerId = workspaceId,`, `ApprovalStatus = ApprovalStatus.Approved,` |
-| `DemoService.cs:292` `demoUser.Role = role;` | **delete**. With `RoleId` nullable, setting the navigation on a tracked entity makes EF fix up `RoleId = role.Id`. The `AuditWriter`'s later `SaveChangesAsync` would then persist a member platform role. `:293` (`demoMembership.Role = role;`) stays |
+| `DemoService.cs:292` `demoUser.Role = role;` | already deleted by Part A (task A16). Verify it is absent. With `RoleId` nullable, that assignment would make EF fix up `RoleId = role.Id`, and the `AuditWriter`'s later `SaveChangesAsync` would persist a member platform role |
 | `AdminSeeder.cs:150`, `:160` | delete the two `ApprovalStatus` lines. `:148`, `:158` (`RoleId = adminRoleId`) stay: that is the platform role |
-| `TenantService.cs` | delete the Part A maintenance block (§3.2, from `// DB-11f PART A ONLY` through its `foreach`). `HardDeleteOrder` loses `typeof(User)` (22 entries; §5 B6) |
+| `TenantService.cs` | delete **all three** Part A-only pieces: the read-only pre-flight, the maintenance block (from `// DB-11f PART A ONLY — legacy pointer maintenance` through its `foreach`), and the `LeastPrivilegeGlobalRoleIdAsync` helper. `HardDeleteOrder` loses `typeof(User)` (22 entries; §5 B6) |
 | `JwtTokenService.cs:172` | `new Claim("role_id", (operatorUser.RoleId ?? 0).ToString()),` |
-| `.github/workflows/db-migrations.yml:63-64` | in **both** `INSERT INTO users (…)`: remove `approval_status, ` from the column list and the matching `1, ` from `VALUES` (the value after `true, `). `role_id`/`$rid` stay |
+| `.github/workflows/db-migrations.yml:63-64` | in **both** `INSERT INTO users (…)`: remove `approval_status, ` from the column list and the matching `1, ` from `VALUES` (the value after `true, `). `role_id`/`$rid` stay. **Same commit as migration B-1** (Gemini MEDIUM): the CI job applies B-1 and then runs this probe, so a split commit fails CI with 42703 |
 
 ### 3.6 Audit
 
@@ -397,7 +510,9 @@ string already used at `AuthService.cs:1170,1179,1187`. `Tests/AuditCoverageTest
 ### 3.7 What happens to every existing row
 
 - **Part A:** no row is written by the deploy. On a workspace hard delete, the delete set is identical to today's (P2), and surviving identities keep being re-pointed, now both columns.
-  The latent tenant-role 23503 disappears. `isHome` and the mail workspace names are identical where I2 holds (P3).
+  The `users.role_id` half of the latent tenant-role 23503 disappears. The `workspace_memberships.role_id` half (a membership elsewhere holding a role owned by the deleted workspace, §2) is **not** fixed here:
+  P6b must print 0 before Part A ships, and follow-up F1 closes the assignment path. `isHome` and the mail workspace names are identical where I2 holds (P3). Profile and preferences stop
+  404-ing for members whose creation role belongs to another workspace. New identities are created atomically with their first membership.
 - **Part B:** every `users` row loses `owner_id` and `approval_status`. Those are copies of the home membership's workspace (I2) and of `Approved`/per-membership state that nothing
   reads since Part A. `role_id` becomes NULL for every non-super-admin row (census P10). Super-admin rows keep theirs. `workspace_memberships`, `roles`,
   `workspaces`, `api_keys`, `user_aliases`, and content are untouched. The one irreversible effect: the dropped and nulled values exist afterwards only in the `pre-db11f` dump.
@@ -428,6 +543,9 @@ After each part: `just fmt`; `just test`; `dotnet ef migrations has-pending-mode
 - **A1.** `Application/Services/Interfaces/IMembershipService.cs`: add after the `NewIdentity` declaration (`:51-58`):
   `/// <summary>DB-11f (D11f.3). The identity's HOME workspace: owner of its earliest membership row of ANY state (ended/soft-deleted included; ORDER BY JoinedAt, Id). Replaces the legacy users.owner_id. Null when the identity has no membership (super admins).</summary>`
   `Task<Guid?> HomeWorkspaceIdAsync(int userId);`
+  and (cross-review Opus MEDIUM, §12 O6):
+  `/// <summary>DB-11f. The identity's platform role — the is_super_admin role its users.role_id points at — loaded without query filters (never an INNER JOIN visibility gate). Null for every non-super-admin.</summary>`
+  `Task<Role?> PlatformRoleAsync(int userId);`
 - **A2.** `Application/Services/Implementation/MembershipService.cs`: add after `NewIdentity` (after `:138`):
   ```csharp
   /// <inheritdoc />
@@ -443,8 +561,28 @@ After each part: `just fmt`; `just test`; `dotnet ef migrations has-pending-mode
           .FirstOrDefaultAsync();
   ```
   Comment `:131` → `// Legacy dual-write, never read since DB-11f Part A (RoleId only, no Role navigation — see JoinAsync); removed by DB-11f Part B.`
-  `Tests/Db17DemoServiceTests.cs` (the wrapper class at `:836`): add `public Task<Guid?> HomeWorkspaceIdAsync(int userId) => inner.HomeWorkspaceIdAsync(userId);`.
-- **A3.** `Application/Services/Implementation/TenantService.cs`: §3.2, both blocks, verbatim. Check that `using Pointer.Domain.Entity;` already covers `Role` (it does: `Role` is used at `:721`).
+  Directly after it:
+  ```csharp
+  /// <inheritdoc />
+  public Task<Role?> PlatformRoleAsync(int userId) =>
+      unitOfWork
+          .Repository<Role>()
+          .Query()
+          .IgnoreQueryFilters()
+          .AsNoTracking()
+          .Where(r =>
+              r.IsSuperAdmin
+              && unitOfWork
+                  .Repository<User>()
+                  .Query()
+                  .IgnoreQueryFilters()
+                  .Any(u => u.Id == userId && u.RoleId == r.Id)
+          )
+          .FirstOrDefaultAsync();
+  ```
+  `Tests/Db17DemoServiceTests.cs` (the wrapper class at `:836`): add `public Task<Guid?> HomeWorkspaceIdAsync(int userId) => inner.HomeWorkspaceIdAsync(userId);` and
+  `public Task<Role?> PlatformRoleAsync(int userId) => inner.PlatformRoleAsync(userId);`.
+- **A3.** `Application/Services/Implementation/TenantService.cs`: §3.2 verbatim. That is four pieces: the new `IdentitiesDeletedWithWorkspace`, the replacement for `:669-719`, the read-only pre-flight after `:581`, and the `LeastPrivilegeGlobalRoleIdAsync` helper. `using Pointer.Domain.Entity;` already covers `Role` (used at `:721`).
 - **A4.** `Application/Services/Implementation/AuthService.cs`: the five `HomeWorkspaceIdAsync` substitutions (§3.3 rows 2-3), the super-admin login branch (§3.3 row 4), `:1108`, `:1192`.
 - **A5.** `AuthService.cs` null-owner key branch (`else {` at `:1227`): delete `:1230-1246` (both `ApprovalStatus` ifs). The comment `:1229` becomes, followed by the new guard:
   ```csharp
@@ -470,12 +608,22 @@ After each part: `just fmt`; `just test`; `dotnet ef migrations has-pending-mode
           ? membership.Role
           : (identity.Role is { IsSuperAdmin: true } platform ? platform : null);
   ```
-- **A7.** `Application/Services/Implementation/PreferencesService.cs:58` → `Role? role = UserMapper.SessionRole(user, null);`; `:63` → `role = UserMapper.SessionRole(user, membership);`.
-- **A8.** `Application/Services/Implementation/ProfileService.cs`: add `using Pointer.Application.Common;`. In `BuildAsync` (`:98`), directly before the final `return` (`:241`), insert:
+- **A7.** `Application/Services/Implementation/PreferencesService.cs`: delete the line `.Include(u => u.Role)` (`:39`). Replace `:58` `var role = user.Role;` with
+  `var platformRole = await _memberships.PlatformRoleAsync(user.Id);` / `Role? role = platformRole;`, and `:63` with `role = membership is not null ? membership.Role : platformRole;`
+  (the `SessionRole` rule, without needing the identity navigation loaded).
+- **A8.** `Application/Services/Implementation/ProfileService.cs`: delete the line `.Include(u => u.Role)` in `GetByIdAsync` (`:32`) and in `GetByPublicIdAsync` (`:45`)
+  (INNER-JOIN visibility gate, §2). In `BuildAsync` (`:98`), directly before the final `return` (`:241`), insert:
   ```csharp
-  // DB-11f D11f.7: the CURRENT role — the caller-workspace membership's (or, with no workspace in
-  // hand, the home membership's); a super admin shows the platform role. Never users.role_id for a member.
-  var roleName = UserMapper.SessionRole(user, null)?.Name;
+  // DB-11f D11f.7 (+ cross-review): the CURRENT role, never users.role_id for a member —
+  // the platform role for a super admin; else the caller-workspace's LIVE membership; with no
+  // workspace in hand, the earliest LIVE membership, else the earliest of any state.
+  var roleName = await _unitOfWork
+      .Repository<Role>()
+      .Query()
+      .IgnoreQueryFilters()
+      .Where(r => r.IsSuperAdmin && r.Id == user.RoleId)
+      .Select(r => r.Name)
+      .FirstOrDefaultAsync();
   if (roleName is null)
   {
       var ms = _unitOfWork
@@ -487,17 +635,19 @@ After each part: `just fmt`; `just test`; `dotnet ef migrations has-pending-mode
           ? await ms.Where(m => m.OwnerId == tenant && m.LeftAt == null && m.DeletedAt == null)
               .Select(m => m.Role.Name)
               .FirstOrDefaultAsync()
-          : await ms.OrderBy(m => m.JoinedAt).ThenBy(m => m.Id)
+          : await ms.OrderBy(m => m.LeftAt != null || m.DeletedAt != null)
+              .ThenBy(m => m.JoinedAt)
+              .ThenBy(m => m.Id)
               .Select(m => m.Role.Name)
               .FirstOrDefaultAsync();
   }
   ```
-  and `:249` → `RoleName = roleName ?? string.Empty,`.
+  and `:249` → `RoleName = roleName ?? string.Empty,`. No new `using` is needed (`Microsoft.EntityFrameworkCore`, `Pointer.Domain.Entity` are present, `:2,8`).
 - **A9.** `Infrastructure/Auth/JwtTokenService.cs`: add `using Pointer.Application.Common;`. Replace `:78-81` with
   `// DB-11f: UserMapper.SessionRole — the membership's role, or the identity's own role ONLY for a super admin.` /
   `var role = UserMapper.SessionRole(u, membership);` / `var roleId = membership?.RoleId ?? role?.Id ?? 0;`.
 - **A10.** `Infrastructure/AppDbContext.cs:108` per §3.3. Append one sentence to the comment `:97-100`:
-  `DB-11f: the null-tenant (non-strict) bucket for identities is "belongs to no workspace" (super admins), no longer users.owner_id IS NULL.`
+  `DB-11f: the null-tenant (non-strict) bucket for identities is the platform role (super admins) — exactly today's users.owner_id IS NULL set. NOT !e.Memberships.Any(): the WorkspaceMembership filter hides every membership from a null-tenant caller, so that would match every identity (cross-review Opus HIGH).`
 - **A11.** Doc-comments. `Domain/Entity/User.cs:12-16` (`RoleId`) →
   `/// <b>Platform role (DB-11f).</b> Read ONLY for super admins (Role.IsSuperAdmin checks, UserMapper.SessionRole). For every other identity it is a legacy copy of the first membership's role — written at creation, never read — and DB-11f Part B sets it to NULL.`
   `:19` → `/// <summary>See <see cref="RoleId"/> — the platform role (DB-11f).</summary>`. `:28-31` (`ApprovalStatus`) →
@@ -508,6 +658,42 @@ After each part: `just fmt`; `just test`; `dotnet ef migrations has-pending-mode
 - **A12.** `dotnet build`. The only permitted new errors are in `Tests/`. An error in Application/API/Infrastructure means a reader this doc missed → **stop and report**.
 - **A13.** `docs/db/DB-RULES.md` R8, at the end of point 7, append:
   `*(added 2026-09-24, DB-11f)* **"Belongs to W" is membership-only.** An identity belongs to W iff it has a workspace_memberships row of any state in W, and belongs **only** to W iff it has none elsewhere — TenantService.IdentitiesDeletedWithWorkspace is the one implementation (delete set and deletion preview). Its **home** workspace is its earliest membership of any state (IMembershipService.HomeWorkspaceIdAsync). No workspace-scoped fact is read from users: a session's role comes from UserMapper.SessionRole; users.role_id is the platform role (super admins only — DB-11f Part B nulls it for everyone else and drops users.owner_id/approval_status).`
+- **A15.** **Identity + first membership in ONE `SaveChangesAsync`** at all 8 creator sites (cross-review Opus MEDIUM, §12 O3). `JoinAsync` sets the `User` navigation
+  (`MembershipService.cs:103`), so EF inserts the identity first and fixes up `UserId` inside the same save. No save is added. Each change only deletes or moves one. Exactly:
+  1. `TenantService.cs` `CreateAsync`: delete `await _unitOfWork.SaveChangesAsync();` at `:237` (inside `if (isNewIdentity)`, right after `AddAsync(identity)`). The save at `:248` now inserts both.
+  2. `UserService.cs` `CreateAsync`: delete the save at `:176`. Move the comment `:178` and `await _emailVerification.SendAsync(identity);` (`:179`) to directly after the save at `:190`,
+     wrapped as `if (isNewIdentity) { … SendAsync(identity!); }` (`isNewIdentity` is declared at `:165`).
+  3. `InviteService.cs` join-existing accept: replace the `try { AddAsync(identity); SaveChangesAsync(); } catch (DbUpdateException) { return … Conflict(AccountExists); }` block (`:773-783`)
+     with the single line `await _unitOfWork.Repository<User>().AddAsync(identity);`. Cut the two notification statements with their comments (`:785-792`). Replace the save at `:803` with
+     `try { await _unitOfWork.SaveChangesAsync(); } catch (Microsoft.EntityFrameworkCore.DbUpdateException) when (isNewIdentity) { return Result<LoginResponse>.Conflict(MessageKeys.Auth.AccountExists); }`
+     (keep the L2 comment above the catch). After `membership.Role = role;` (`:805`) paste the two notification statements as
+     `if (isNewIdentity && invite.Email != null) await NotifyDemoEmailVerifiedAsync(identity!);` and `if (isNewIdentity && invite.Email == null) await _emailVerification.SendAsync(identity!);`.
+  4. `InviteService.cs` new-workspace accept: declare `WorkspaceMembership membership;` directly before `try` (`:907`). Inside the `try`, between `AddAsync(newWorkspace)` (`:940`) and the save (`:941`), insert
+     `membership = await _memberships.JoinAsync(identity!, workspaceId, workspaceAdminRole, ApprovalStatus.Approved, isActive: true, inviteId: invite.Id);`.
+     Delete the old `var membership = await _memberships.JoinAsync(…);` statement (`:962-969`) and the save after it (`:970`). The notification lines `:948-960` stay where they are (now after the combined save).
+  5. `InviteService.cs` quick-access provisioning (`try` at `:1159`): reorder the body's start to `await _unitOfWork.Repository<Invite>().AddAsync(invite);` / `await _unitOfWork.SaveChangesAsync();` (the invite gets its id; an invite row without an identity is harmless history) /
+     `if (isNewIdentity) await _unitOfWork.Repository<User>().AddAsync(identity!);` / the existing `membership = await _memberships.JoinAsync(… inviteId: invite.Id);` / `await _unitOfWork.SaveChangesAsync();` (identity + membership) /
+     then the moved `if (isNewIdentity) await NotifyDemoEmailVerifiedAsync(identity!);` with its comment. Everything after (`QuickAccessLink` …) and the `catch` (`:1200`) are unchanged.
+  6. `AuthService.cs` `RegisterAsync`: delete the save at `:1364`.
+  7. `AuthService.cs` `RegisterAdminAsync`: add `var isNewIdentity = identity == null;` directly before `if (identity == null)` (`:1486`). Delete the save at `:1499`. Move the comment `:1501` and `SendAsync` (`:1502`)
+     to directly after the save at `:1513`, wrapped `if (isNewIdentity) { … SendAsync(identity); }`.
+  8. `DemoService.cs` `ProvisionAsync`: move the comment `:240` and the `var demoMembership = await _memberships.JoinAsync(…);` statement (`:241-248`) to directly after `AddAsync(project)` (`:182`), before the save at `:183`. Delete the save at `:249`.
+  After this task: `grep -n "AddAsync(identity\|AddAsync(demoUser\|JoinAsync(\|SaveChangesAsync()" <each file>` shows, for every creator site, the `JoinAsync` **between** the identity `AddAsync` and the first `SaveChangesAsync` after it. Paste the output into the PR.
+- **A16.** `DemoService.cs:292`: delete `demoUser.Role = role;` (Gemini MEDIUM). `:293` `demoMembership.Role = role;` stays.
+- **A17.** `API/Seed/AdminSeeder.cs` (D11f.8): as the first statement of the reconcile `else {` (`:157`), insert
+  ```csharp
+  // DB-11f (cross-review Opus LOW): never promote a workspace member to super admin — super admins
+  // hold no memberships (P4) and the membership-based workspace delete rule excludes them. Throwing
+  // lands in the catch below: this reconcile step is skipped and logged; boot continues.
+  if (
+      user.RoleId != adminRoleId
+      && await db.WorkspaceMemberships.IgnoreQueryFilters().AnyAsync(m => m.UserId == user.Id)
+  )
+      throw new InvalidOperationException(
+          $"ADMIN__EMAIL matches workspace member identity {user.Id}; not promoted to super admin (DB-11f). Use an address that belongs to no workspace."
+      );
+  ```
+  Do **not** `return`: the plan seeding after the catch (`:180`) must still run.
 - **A14.** Tests (§6 Part A).
 
 ### Part B (contract; only after Part A has been in production ≥ 24 h, §9)
@@ -522,16 +708,17 @@ After each part: `just fmt`; `just test`; `dotnet ef migrations has-pending-mode
   `// DB-11f: the platform role — optional; non-null only for super admins.`
 - **B3.** `MembershipService.cs` per §3.5. Add to `NewIdentity`'s XML doc in `IMembershipService.cs`:
   `/// <remarks>DB-11f: firstRole/firstWorkspaceId are no longer stored on the identity — the caller's JoinAsync records them on the membership. Kept for call-site stability.</remarks>`.
-- **B4.** `DemoService.cs` per §3.5 (`:151-156`, `:292`).
+- **B4.** `DemoService.cs` per §3.5 (`:151-156`; confirm `:292`'s `demoUser.Role = role;` is gone since A16).
 - **B5.** `API/Seed/AdminSeeder.cs:150`, `:160` deleted.
-- **B6.** `TenantService.cs`: delete the Part A maintenance block. In `HardDeleteOrder` delete `typeof(User),`. Replace its comment (`:808-811`) with
+- **B6.** `TenantService.cs`: delete the three Part A-only pieces (pre-flight, maintenance block, `LeastPrivilegeGlobalRoleIdAsync`; §3.5). In `HardDeleteOrder` delete `typeof(User),`. Replace its comment (`:808-811`) with
   `// The 22 owner-carrying types, in the same order as the DeleteOwnedAsync<T> calls above. User is not in it since DB-11f (it carries no owner_id): identities are removed by IdentitiesDeletedWithWorkspace, after memberships. Documentation + test input for WorkspaceTests.HardDeleteOrder_CoversEveryOwnerCarryingEntity. Never loop over this in production code.`
   In the comment above `DeleteOwnedAsync<WorkspaceMembership>` delete nothing. It stays accurate.
 - **B7.** `JwtTokenService.cs:172` per §3.5.
-- **B8.** `.github/workflows/db-migrations.yml:63-64` per §3.5.
+- **B8.** `.github/workflows/db-migrations.yml:63-64` per §3.5, **in the same commit as B-1** (Gemini MEDIUM).
 - **B9.** `dotnet build`. Permitted errors outside `Tests/`: none. Any error → stop and report. In `Tests/`, fix **only** errors of the form `'User' does not contain a definition for 'OwnerId'`
   / `'ApprovalStatus'` (CS0117 in `new User { … }` initializers: delete that one line; CS1061 in member access: apply §6 recipe T1/T2) and `int?`-conversion errors on `User.RoleId`.
-  Never touch `OwnerId`/`ApprovalStatus`/`RoleId` inside `new WorkspaceMembership`, `new Invite`, `new ApiKey`, or any other type's initializer. The compiler names the type.
+  Never touch `OwnerId`/`ApprovalStatus`/`RoleId` inside `new WorkspaceMembership`, `new Invite`, `new ApiKey`, or any other type's initializer. The compiler names the type **and the line**:
+  the line numbers in §6 item 20 are as of `0d5f75a`, so trust the compiler if they drifted.
 - **B10.** `just migrate name="DropUsersLegacyTenancyColumns"`. Read it against §3.4 B-1 (R13). **Diff the snapshot:** only the `Pointer.Domain.Entity.User` blocks change
   (`ApprovalStatus` and `OwnerId` property blocks removed; `RoleId` → `b.Property<int?>`; `HasIndex("OwnerId")` and the `HasIndex("Email", "OwnerId")…` + `AreNullsDistinct` lines removed;
   the `Workspace` `HasOne … fk_users_workspaces_owner_id` block removed; the `Role` relationship loses `.IsRequired()`). Anything else → stop (R13, R15). Add marker + attribute.
@@ -560,9 +747,12 @@ Copy patterns from: `Tests/WorkspaceTests.cs:168-205` (Sqlite `TestDb`, real FKs
    (`RoleId = role.Id, IsActive = false, ApprovalStatus = Approved, JoinedAt = UtcNow.AddDays(-2), LeftAt = UtcNow.AddDays(-1), LeftReason = MembershipEndReason.AccountErased, SecurityStamp = Guid.NewGuid()`).
    This is the shape `IdentityEraseService` actually leaves. Also add a live membership for `admin`. Update the comment `:574-581`: the erased identity "keeps its ended membership (EndAsync), so the membership rule selects it".
 2. `Tests/TokenServiceTests.cs:9-21`: pass `new WorkspaceMembership { Id = 1, OwnerId = Guid.NewGuid(), RoleId = role.Id, Role = role, SecurityStamp = Guid.NewGuid() }` instead of `null`. Assertions unchanged.
-3. `Tests/TenantQueryFilterTests.cs`: `:189` → `Assert.Equal("a@x", results[0].Email);`. In `NullTenant_NonSuper_DefaultFlag_SeesNullOwnerBucket` (`:200-257`) keep a reference to the first user
-   (`var a = new User { … }` then `seed.Users.Add(a)`). After `seed.SaveChanges();` add `TestSeed.Join(seed, a, tenantA, new Role { Id = 1 });`. Replace `:255-256` with
-   `Assert.All(results, u => Assert.StartsWith("n", u.Email));` / `Assert.DoesNotContain(results, u => u.Email == "a@x");`.
+3. `Tests/TenantQueryFilterTests.cs`: `:189` → `Assert.Equal("a@x", results[0].Email);`. In `NullTenant_NonSuper_DefaultFlag_SeesNullOwnerBucket` (`:200-257`, name kept), the bucket is now the platform role (§3.3, Opus HIGH).
+   At the top of the seed block add `var superRole = new Role { Name = "SA", IsSuperAdmin = true, GrantsAdmin = true, IsActive = true };` / `var memberRole = new Role { Name = "M", IsActive = true };` /
+   `seed.Roles.AddRange(superRole, memberRole); seed.SaveChanges();`. Set `RoleId = memberRole.Id` on `a@x`, and `RoleId = superRole.Id` on `n1@x` and `n2@x`. Keep a reference to `a@x`
+   (`var a = new User { … }`), and after the users' `seed.SaveChanges();` add `TestSeed.Join(seed, a, tenantA, memberRole);`. Replace `:255-256` with
+   `Assert.All(results, u => Assert.StartsWith("n", u.Email));` / `Assert.DoesNotContain(results, u => u.Email == "a@x");`. This test **must fail** with the rejected `!e.Memberships.Any()` form
+   (it would return all three users). That is the regression proof for Opus HIGH. `NullTenant_NonSuper_StrictFlag_SeesNothing` stays unchanged.
 4. Any other failure → recipe T0 or stop.
 
 ### Part A — add `Tests/Db11fMembershipRulesTests.cs` (namespace as siblings)
@@ -573,11 +763,15 @@ Copy patterns from: `Tests/WorkspaceTests.cs:168-205` (Sqlite `TestDb`, real FKs
    (j) non-super, owner W, **no membership** → out. Assert `IdentitiesDeletedWithWorkspace(uow, W).Select(u => u.Email)` equals exactly {a, d, e, h, i}.
 6. `DeleteSet_EqualsLegacyRule_WhenInvariantI1Holds`. For shapes (a)-(g) only, assert the new set equals `Users.IgnoreQueryFilters().Where(u => u.OwnerId == W && !WorkspaceMemberships.IgnoreQueryFilters().Any(m => m.UserId == u.Id && m.OwnerId != W))`
    (the pre-DB-11f predicate, inlined in the test; Part B deletes this test with a one-line PR note, because the column is gone).
-7. `HardDelete_RehomedIdentityWithTenantRole_Succeeds_UnderRealForeignKeys` (Sqlite `TestDb` copied from `WorkspaceTests.cs:168`). The identity is created in W with a **W-owned** role
-   (`users.role_id` = it, `OwnerId = W`), with memberships in W (that role) and X (a global role). `HardDeleteAsync(W)` → success. The identity survives with `OwnerId == X`, `RoleId ==` its X membership's role, and the W role is gone.
+7. `HardDelete_RehomedIdentityWithTenantRole_Succeeds_UnderRealForeignKeys` (Sqlite `TestDb` copied from `WorkspaceTests.cs:168`). Seed the global roles `Developer` (no flags) and a super role.
+   The identity is created in W with a **W-owned** role (`users.role_id` = it, `OwnerId = W`), with memberships in W (that role) and X (the **super** role, to prove the re-point never copies a membership role).
+   `HardDeleteAsync(W)` → success. The identity survives with `OwnerId == X` and `RoleId == Developer.Id` (**not** the super role; Opus privilege-escalation finding). The W role is gone.
    On `main` this test fails with a FK error (the §2 latent bug). Say so in the PR.
-8. `HardDelete_MembershipLessIdentityReferencingWorkspace_Throws_AndDeletesNothing` (Sqlite). Shape (j) plus a normal admin. `HardDeleteAsync(W)` throws `InvalidOperationException` whose message contains `DB-11f invariant I1`.
-   Afterwards the workspace row and both users still exist. Part B deletes this test (shape j then survives; see test 16).
+8. `HardDelete_MembershipLessIdentityReferencingWorkspace_RefusedBeforeAnySideEffect` (Sqlite; Opus MEDIUM). Shape (j) plus a normal admin, a project, and a spy `IFileStorage` and spy `IAuditWriter`
+   (copy `RecordingFileStorage` from `Tests/ScreenshotPurgeTests.cs:78`, which records `DeleteOwnerFilesAsync` at `:114`, and `RecordingAuditWriter` from `Tests/Db17DemoServiceTests.cs:150`). Call `HardDeleteAsync(W, "admin")`, the ordinary operator reason whose audit and file delete run before the transaction.
+   Assert: `IsSuccess == false`, `Message` contains `DB-11f invariant I1`, **no** `tenant.hard_deleted` audit entry, `DeleteOwnerFilesAsync` **not** called, and the workspace row, project and both users still exist.
+   Part B deletes this test (shape j then survives; see test 16).
+8b. `HardDelete_NoLeastPrivilegeGlobalRole_RefusedBeforeAnySideEffect` (Sqlite): as test 7 but with no global role free of all three flags. Result is a failure with a message containing `no global least-privilege role`, and there are no side effects. Part B deletes it.
 9. `HomeWorkspace_IsEarliestMembershipOfAnyState`. Identity joined A at t0 (then ended), B at t1 → `A`. No memberships → `null`. Equal `JoinedAt` → lower `Id` wins.
 10. `Login_Picker_IsHome_FollowsEarliestMembership`: copy `WorkspaceSwitchTests.cs:260-296`, but seed the identity with `OwnerId = workspaceB` and join A **before** B.
     Assert `IsHome` is on A. This proves `owner_id` is no longer read.
@@ -589,25 +783,34 @@ Copy patterns from: `Tests/WorkspaceTests.cs:168-205` (Sqlite `TestDb`, real FKs
 13. `ApiKeyLogin_NullOwnerKey_NonSuperAdmin_Refused` (copy `Tests/ApiKeyAuthTests.cs` setup): non-super identity with a null-owner live key → `Failure(InvalidApiKey)`, and one audit row with reason `invalid_credentials`.
     The super admin's null-owner key still signs in (MFA not enrolled).
 14. `Profile_RoleName_IsCurrentMembershipRole`: identity created with role "Developer", membership later changed to "PM" → `GET` profile as that tenant → `"PM"`. The super admin's own profile → super role name.
-15. **Guards that must pass unchanged:** `Db18WorkspaceLifecycleTests.Preview_AccountsCount_EqualsRowsActuallyDeleted` (`:2050`), `WorkspaceMembershipTests.HardDelete_Workspace_KeepsMultiWorkspaceIdentity_EndsOnlyThatMembership` (`:527`),
+    No tenant in hand (super-admin caller viewing a member) → the earliest **live** membership's role, even when an earlier **ended** membership exists (Gemini MEDIUM).
+14b. `Profile_And_Preferences_Visible_WhenCreationRoleBelongsToAnotherWorkspace` (Opus MEDIUM). The identity has `users.role_id` = a role **owned by W** and a live membership in X.
+    As tenant X: `ProfileService.GetByIdAsync(id)` and `GetByPublicIdAsync(publicId)` → success; `PreferencesService` update (e.g. `Theme = "dark"`) → success. On `main` all three return NotFound (the INNER JOIN).
+14c. `Creators_SaveIdentityAndFirstMembership_InOneSaveChanges` (Opus MEDIUM, task A15). Subscribe to the context's `SavingChanges` event (precedent: the interceptor in `Tests/DemoServiceAnalyticsFailureTests.cs:156-170`;
+    the event needs no options change): `ctx.SavingChanges += (o, _) => saves.Add(((DbContext)o!).ChangeTracker.Entries().Where(e => e.State == EntityState.Added).Select(e => e.Entity.GetType()).ToHashSet());`.
+    For each of the 8 creator paths, build the service exactly as its existing test file does and create a **new** identity. The builders are in `WorkspaceTests.cs:601-608` (TenantService), `WorkspaceAdminOwnershipTests.cs` (UserService), `InviteServiceTests.cs` `BuildService` (three invite paths),
+    `ChangePasswordTests.cs:160-173` (AuthService: register, register-admin) and `Db17DemoServiceTests.cs` (DemoService). Assert that the **first** recorded save containing `typeof(User)` also contains `typeof(WorkspaceMembership)`.
+14d. `AdminSeeder_DoesNotPromoteAWorkspaceMember` (D11f.8; copy the `AdminSeeder.SeedAsync` harness of `Tests/PlanSeederTests.cs`). An identity with `ADMIN__EMAIL`'s address and a live membership exists.
+    After `SeedAsync` its `RoleId` is unchanged and it is not a super admin, and the plan seeding still ran (plans exist). The same harness with a membership-less address still promotes (regression guard).
+15. **Guards that must pass unchanged:** `Db18WorkspaceLifecycleTests.Preview_AccountsCount_EqualsRowsActuallyDeleted` (`:2118`), `WorkspaceMembershipTests.HardDelete_Workspace_KeepsMultiWorkspaceIdentity_EndsOnlyThatMembership` (`:527`),
     `WorkspaceTests.HardDelete_RemovesEverything_EvenWithSuggestionNotification` (`:388`), `WorkspaceSwitchTests` `IsHome` asserts (`:294-296,741-742`), the whole `Tests/WorkspaceMembershipTests.cs`
     (**R8.7 tenancy proof: tenant B sees no identity of A**), `Tests/TenantQueryFilterTests.cs`, `Tests/AuditCoverageTests.cs`. List them in the PR as run.
 
 ### Part B
-16. Delete tests 6 and 8 (they read `OwnerId`). Add `HardDelete_MembershipLessIdentity_Survives_AndDoesNotBlock` (Sqlite, shape j without `OwnerId`): `HardDeleteAsync(W)` succeeds and the identity row survives.
+16. Delete tests 6, 8 and 8b (they read `OwnerId` or exercise Part A-only code). Add `HardDelete_MembershipLessIdentity_Survives_AndDoesNotBlock` (Sqlite, shape j without `OwnerId`): `HardDeleteAsync(W)` succeeds and the identity row survives.
 17. `User_HasNoLegacyTenancyMembers` (copy `Tests/Db11eLegacyDemoStateRemovedTests.cs`'s model check): `typeof(User).GetProperty("OwnerId")` and `("ApprovalStatus")` are null, and so is `db.Model.FindEntityType(typeof(User))!.FindProperty(...)` for both.
     `FindEntityType(typeof(User))!.GetIndexes()` has none named `ux_users_email_owner_live` and none over `OwnerId`. `FindProperty("RoleId")!.IsNullable` is `true`. `Role`, `IsActive`, `MergedIntoUserId` exist (guards over-deletion).
 18. `NewIdentity_And_DemoProvision_WriteNoPlatformRole`: `NewIdentity(...).RoleId` is null. After `DemoService.ProvisionAsync` **and its audit write**, the demo identity's `RoleId` is null in a fresh context. This catches the `:292` fix-up.
     `AdminSeeder` run against an empty InMemory DB → the super admin has `RoleId` = the super role.
-19. `Tests/WorkspaceTests.cs:381` → `Assert.Equal(22, TenantService.HardDeleteOrder.Length);`. In `HardDelete_RemovesEverything…` (`:388`), keep a variable for the seeded admin's `Id` and add
+19. `Tests/WorkspaceTests.cs:382` → `Assert.Equal(22, TenantService.HardDeleteOrder.Length);`. In `HardDelete_RemovesEverything…` (`:388`), keep a variable for the seeded admin's `Id` and add
     `Assert.Null(verify.Users.IgnoreQueryFilters().SingleOrDefault(u => u.Id == <that id>));` (the per-type loop no longer covers `User`).
-20. Semantic rewrites (all from §2's scan): `Db17DemoServiceTests.cs:960` T2; `Db18WorkspaceLifecycleTests.cs:2121` T1 (`verify`, `survivor`, `otherWorkspaceId`);
-    `DemoUpgradeTests.cs:295` → `Assert.Equal(demoWorkspaceId, row.OwnerId);`; `InviteServiceTests.cs:624-625` T3+T1, `:816` → `Assert.Null(created.RoleId);` (membership asserts `:820-826` already cover the role),
-    `:819` delete, `:824` → `Assert.NotEqual(Guid.Empty, membership.OwnerId);`, `:828` delete, `:917` delete, `:919-920` T1+T3, `:991` T3 (`roleId`, `pick@role.com`),
-    `:1787` and `:1841` → `Assert.Empty(db.WorkspaceMemberships.IgnoreQueryFilters().Where(m => m.RoleId == clientRoleId));`, `:1884-1886` T3+T1 (+ delete the `ApprovalStatus` assert);
+20. Semantic rewrites (all from §2's scan, line numbers at `0d5f75a`): `Db17DemoServiceTests.cs:960` T2; `Db18WorkspaceLifecycleTests.cs:2189` T1 (`verify`, `survivor`, `otherWorkspaceId`);
+    `DemoUpgradeTests.cs:295` → `Assert.Equal(demoWorkspaceId, row.OwnerId);`; `InviteServiceTests.cs:626-627` T3+T1, `:818` → `Assert.Null(created.RoleId);` (membership asserts `:822-828` already cover the role; also delete the `.Include(u => u.Role)` at `:816`),
+    `:821` delete, `:826` → `Assert.NotEqual(Guid.Empty, membership.OwnerId);`, `:830` delete, `:919` delete, `:921-922` T1+T3, `:1036` T3 (`roleId`, `pick@role.com`),
+    `:1832` and `:1886` → `Assert.Empty(db.WorkspaceMemberships.IgnoreQueryFilters().Where(m => m.RoleId == clientRoleId));`, `:1929-1931` T3+T1 (+ delete the `ApprovalStatus` assert);
     `WorkspaceAdminOwnershipTests.cs:190-191` T3+T1, `:236` T1, `:285-286` T3+T1; `WorkspaceBeforeIdentityOrderingTests.cs:253` T1, `:294-295` T2; `WorkspaceMembershipTests.cs:619` T1 (`verify`, `survivingX`, `workspaceB`),
     `:793` T1 (`verify2`); `WorkspaceTests.cs:328` T2; `TokenServiceTests.cs:44,49` delete `, OwnerId = tenantId` / `, OwnerId = null`.
-    Assertions on the **seeded** `RoleId` of test-created users (`DeletionSemanticsTests.cs:351`, `UserGovernanceTests.cs:641`, `RoleServiceDeleteTests.cs:149`) keep passing unchanged. Leave them.
+    Assertions on the **seeded** `RoleId` of test-created users (`DeletionSemanticsTests.cs:351`, `UserGovernanceTests.cs:652`, `RoleServiceDeleteTests.cs:149`) keep passing unchanged. Leave them.
 21. **Existing data survives** — Postgres-only, proven in the R11 rehearsal (§7 criterion B6), pasted into the PR.
 
 ## 7. Acceptance criteria
@@ -624,25 +827,36 @@ Copy patterns from: `Tests/WorkspaceTests.cs:168-205` (Sqlite `TestDb`, real FKs
        assert old in s, old
        s=s.replace(old,'    [System.Obsolete("DB11F_'+tag+'")]\n'+old)
    open(p,'w').write(s)
+   p='Domain/Entity/Role.cs'; s=open(p).read(); old='    public ICollection<User> Users { get; set; }'
+   assert old in s, old
+   open(p,'w').write(s.replace(old,'    [System.Obsolete("DB11F_ROLEUSERS")]\n'+old))
    EOF
-   dotnet build Pointer.sln -nologo --no-incremental 2>&1 | grep -E "warning CS0618.*DB11F" | sed -E 's#^.*/db11f-scan/##; s/ \[.*\]$//' | sort -u | grep -v '^Tests/' > /tmp/db11f-a.txt
+   # strip the trailing "[…csproj]" FIRST, then the path prefix (cross-review Opus: the greedy prefix
+   # match used to run inside the csproj bracket and ate the DB11F_* tags)
+   dotnet build Pointer.sln -nologo --no-incremental 2>&1 | grep -E "warning CS0618.*DB11F" | sed -E 's/ \[[^]]*\]$//; s#^.*/db11f-scan/##' | sort -u | grep -v '^Tests/' > /tmp/db11f-a.txt
+   grep -c . /tmp/db11f-a.txt    # sanity: must be > 0 and every line must start with a repo path (API/, Application/, Infrastructure/)
    grep DB11F_OWNERID  /tmp/db11f-a.txt | cut -d'(' -f1 | sort | uniq -c
    grep DB11F_APPROVAL /tmp/db11f-a.txt | cut -d'(' -f1 | sort | uniq -c
    grep DB11F_ROLEID   /tmp/db11f-a.txt | cut -d'(' -f1 | sort | uniq -c
    ```
-   Expected occurrence counts (one per member access; `sort -u` keeps line+column, so two accesses on one line count twice). **OWNERID**: `Infrastructure/Mappings/UserMapping.cs` 4,
-   `Application/Services/Implementation/MembershipService.cs` 1, `…/DemoService.cs` 1, `…/TenantService.cs` 3 (all inside the `DB-11f PART A ONLY` block: the `Where`, the `if`, the assignment).
-   No `AuthService.cs` and no `AppDbContext.cs`. **APPROVAL**: `UserMapping.cs` 1, `MembershipService.cs` 1, `DemoService.cs` 1, `API/Seed/AdminSeeder.cs` 3. No `AuthService.cs`.
-   **ROLEID**: `UserMapping.cs` 2, `MembershipService.cs` 1, `DemoService.cs` 1, `AdminSeeder.cs` 3, `Infrastructure/Auth/JwtTokenService.cs` 1 (`IssueImpersonation`, super admin), `TenantService.cs` 4
-   (three in the maintenance block and `id == u.RoleId` in `IdentitiesDeletedWithWorkspace`, the super-admin exclusion). No `UserMapper.cs` and no `AuthService.cs`.
-   A file missing from, or added to, these lists is a finding → stop and report. **ROLE**:
-   `grep "DB11F_ROLE'" /tmp/db11f-a.txt | while IFS='(' read f rest; do l=${rest%%,*}; sed -n "${l}p" "/tmp/db11f-scan/$f"; done | grep -vE 'Include\(u => u\.Role\)|IsSuperAdmin|operatorUser\.Role|HasOne\(x => x\.Role\)|demoUser\.Role = role'` → **no output**.
+   Expected **files** per tag (counts are one per member access; `sort -u` keeps line+column, so two accesses on one line count twice). Baseline before Part A at `0d5f75a`: 73 lines = APPROVAL 10, OWNERID 15, ROLE 37, ROLEID 10, ROLEUSERS 1.
+   **OWNERID**: `Infrastructure/Mappings/UserMapping.cs` 4, `Application/Services/Implementation/MembershipService.cs` 1, `…/DemoService.cs` 1, `…/TenantService.cs` 4 (all in `DB-11f PART A ONLY` code:
+   one in the pre-flight, three in the maintenance block). **No** `AuthService.cs`, **no** `AppDbContext.cs`.
+   **APPROVAL**: `UserMapping.cs` 1, `MembershipService.cs` 1, `DemoService.cs` 1, `API/Seed/AdminSeeder.cs` 3. **No** `AuthService.cs`.
+   **ROLEID** (every one a legacy write, Part A-only maintenance, or a platform-role read): `UserMapping.cs` 2, `MembershipService.cs` 2 (`NewIdentity` write + `PlatformRoleAsync`), `DemoService.cs` 1,
+   `AdminSeeder.cs` 4 (`:148`, the two at `:158`, the A17 guard), `Infrastructure/Auth/JwtTokenService.cs` 1 (`IssueImpersonation`), `ProfileService.cs` 1 (platform-role lookup),
+   `TenantService.cs` 7 (`IdentitiesDeletedWithWorkspace` 1, pre-flight 2, maintenance 4). **No** `UserMapper.cs`, **no** `AuthService.cs`, **no** `PreferencesService.cs`.
+   **ROLEUSERS**: `UserMapping.cs` 1. A file missing from, or added to, these lists is a finding → stop and report. **ROLE**:
+   `grep "DB11F_ROLE'" /tmp/db11f-a.txt | while IFS='(' read f rest; do l=${rest%%,*}; sed -n "${l}p" "/tmp/db11f-scan/$f"; done | grep -vE 'Include\(u => u\.Role\)|IsSuperAdmin|operatorUser\.Role|HasOne\(x => x\.Role\)'` → **no output**;
+   and `grep "DB11F_ROLE'" /tmp/db11f-a.txt | grep -cE "ProfileService|PreferencesService|DemoService.cs\(292"` → 0.
    Paste all four outputs in the PR. Then `rm -rf /tmp/db11f-scan`.
 3. `grep -n "OwnerId == workspaceId" Application/Services/Implementation/TenantService.cs` → only `DeleteOwnedAsync` lines, the `Role` query, and one line inside the maintenance block;
    `grep -c "DB-11f invariant I1" Application/Services/Implementation/TenantService.cs` → 1; `grep -c "HomeWorkspaceIdAsync" Application/Services/Implementation/AuthService.cs` → 5;
-   `grep -c "ApprovalStatus.Pending\|ApprovalStatus.Rejected" Application/Services/Implementation/AuthService.cs` → the count on `main` minus 4; `grep -c "SessionRole" Application Infrastructure -r` → ≥ 6.
-4. `just test` green (tests 5, 7-14 new; 1-3 edited; 15 unchanged). CI green (DB-10 job, `MigrationSafetyTests`).
-5. **Prod pre-checks P1-P7 (§9) run on a same-day dump** (the rehearsal copy is enough for Part A): P1, P2, P4, P5 print the expected results. P3/P6/P7 pasted.
+   `grep -c "ApprovalStatus.Pending\|ApprovalStatus.Rejected" Application/Services/Implementation/AuthService.cs` → the count on `main` minus 4; `grep -rn "SessionRole" Application Infrastructure | wc -l` → ≥ 5;
+   `grep -n "e.Memberships.Any()" Infrastructure/AppDbContext.cs` → nothing, and `grep -c "e.Role != null && e.Role.IsSuperAdmin" Infrastructure/AppDbContext.cs` → 1;
+   `grep -c "Include(u => u.Role)" Application/Services/Implementation/ProfileService.cs Application/Services/Implementation/PreferencesService.cs` → 0 each; `grep -c "LeastPrivilegeGlobalRoleIdAsync" Application/Services/Implementation/TenantService.cs` → 3 (definition + pre-flight + maintenance).
+4. `just test` green (tests 5, 7-14d new; 1-3 edited; 15 unchanged). CI green (DB-10 job, `MigrationSafetyTests`). Task A15's `grep` output is pasted (JoinAsync between identity `AddAsync` and the first save at all 8 sites).
+5. **Prod pre-checks (§9 Part A step 1) run on a same-day dump** (the rehearsal copy is enough for Part A): **blocking** P1, P2, P4, P5, **P6b, P9, P11** print the expected results. P3/P6/P7 pasted.
 6. `scripts/local-e2e-gate.sh <Part A worktree>` → **PASS**.
 
 **Part B**
@@ -667,7 +881,8 @@ Copy patterns from: `Tests/WorkspaceTests.cs:168-205` (Sqlite `TestDb`, real FKs
    - **on Part B code**: super admin login → `/me` identical to before (`isSuperAdmin: true`, same `roleName`); demo login → `/me` identical (`roleName`, `isHome`); `GET /api/me/profile` as the demo → `roleName` "Workspace Admin";
      `DELETE /api/admin/tenants/{A}` as super admin → 200, and afterwards `db11f-a@example.com` has no `users` row while B and its admin are intact; `POST /api/demo` again → the new identity has `role_id IS NULL`;
      no `42703`/`does not exist`/`23503` in either API log;
-   - **rollback drill (§8 path A):** `dotnet ef migrations script <ts>_ClearUsersRoleIdForMembers 20260923220301_AddWorkspacesPauseAndDeletionState -p Infrastructure -s API -o /tmp/db11f-down.sql`, apply with
+   - **rollback drill (§8 path A).** This is the **only** proof of B-1's `Down()` (Gemini HIGH / Opus LOW): the DB-10 CI job round-trips only the newest migration, B-2. Paste the generated `/tmp/db11f-down.sql` into the PR,
+     confirming B-2's `Down` `UPDATE` comes first and B-1's `ALTER COLUMN role_id SET NOT NULL` carries no `DEFAULT 0`. Commands: `dotnet ef migrations script <ts>_ClearUsersRoleIdForMembers 20260923220301_AddWorkspacesPauseAndDeletionState -p Infrastructure -s API -o /tmp/db11f-down.sql`, apply with
      `docker exec -i pointer-db11f-rehearsal psql -U pointer -d pointer_rehearsal -v ON_ERROR_STOP=1 -1 < /tmp/db11f-down.sql` → columns/indexes/FK back, `role_id NOT NULL` with no NULLs, `approval_status` all 1,
      `owner_id` all NULL, 81 history rows. Boot **Part A code** against it → super admin + demo log in, `DELETE /api/admin/tenants/{B}` → 200. Then `database update` again → 83.
 7. `scripts/local-e2e-gate.sh <Part B worktree>` → **PASS**.
@@ -696,11 +911,12 @@ The columns were written throughout.
 
 **Part B.**
 - **Irreversible part (bold, R5): the values of `users.owner_id`, `users.approval_status`, and `users.role_id` of every non-super-admin identity are destroyed.** `Down()` recreates
-  the columns with `owner_id` NULL and `approval_status` = 1. B-2's `Down()` refills `role_id` from the earliest membership, **not** the original creation role. The only copy of the originals is the
+  the columns with `owner_id` NULL and `approval_status` = 1. B-2's `Down()` refills every NULL `role_id` with the least-privilege global role (never a membership's role, so it cannot escalate; §12 O5/O8), **not** the original creation role. The only copy of the originals is the
   `pre-db11f` dump the contract deploy takes immediately before the migrations (R7). This is acceptable because Part A code reads none of them for behaviour (§7 Part A criterion 2).
 - **Migration fails while applying:** each migration runs in its own transaction. If B-1 fails, nothing is applied. If B-2 fails, B-1 stays applied. Either way the API exits (DB-09).
   Answer: path B (restore `pre-db11f`), never a hand-fix of the schema or `__EFMigrationsHistory` (R7.1 point 6 spirit).
-- **Migrations applied, new code misbehaves.** Part A code maps `OwnerId`/`ApprovalStatus`, so it cannot run on the contracted schema (42703). Options in order of preference:
+- **Migrations applied, new code misbehaves.** Part A code maps `OwnerId`/`ApprovalStatus`, so it cannot run on the contracted schema (42703). The reverse is also true (Gemini LOW, §12 G13):
+  Part B code must **not** run against the rolled-back schema, because it never writes the restored NOT NULL `role_id`. So the order is always: API stopped → `Down` script → Part A binary → start. Never run `Down` under a live Part B API. Options in order of preference:
   - **A (lossless for live data, rehearsed in §7 B6):** generate `/tmp/db11f-down.sql` on a workstation (command in §7 B6) and read it (B-2 refill `UPDATE`, B-1 inverse, two `DELETE FROM "__EFMigrationsHistory"`).
     Copy it to the VM. `docker compose -f docker-compose.prod.yml stop api`; `bash scripts/backup-db.sh pre-db11f-rollback`;
     `docker compose --env-file .env.prod -f docker-compose.prod.yml exec -T db psql -U pointer -d pointer -v ON_ERROR_STOP=1 -1 < db11f-down.sql`;
@@ -765,19 +981,31 @@ The columns were written throughout.
      WHERE k.owner_id IS NULL AND k.revoked_at IS NULL AND k.deleted_at IS NULL
        AND NOT EXISTS (SELECT 1 FROM roles r WHERE r.id = u.role_id AND r.is_super_admin);
      ```
-   - **P6 — exposure to the latent tenant-role FK bug (informational; Part A fixes it):**
+   - **P6 — exposure of `users.role_id` to the latent tenant-role FK bug (informational; Part A re-points it):**
      ```sql
      SELECT u.id, u.owner_id, r.id AS role_id, r.owner_id AS role_owner FROM users u JOIN roles r ON r.id = u.role_id
      WHERE r.owner_id IS NOT NULL AND r.owner_id IS DISTINCT FROM u.owner_id;
-     SELECT count(*) FROM workspace_memberships m JOIN roles r ON r.id = m.role_id
-     WHERE r.owner_id IS NOT NULL AND r.owner_id <> m.owner_id;   -- expected 0; non-zero = a separate bug, report it
      ```
+   - **P6b — a membership holds another workspace's role (blocking, must print 0 rows; cross-review Opus MEDIUM).** Such a row makes that other workspace's hard delete fail with 23503
+     at `DeleteOwnedAsync<Role>`, and DB-11f does not repair memberships:
+     ```sql
+     SELECT m.id, m.user_id, m.owner_id, r.id AS role_id, r.owner_id AS role_owner FROM workspace_memberships m JOIN roles r ON r.id = m.role_id
+     WHERE r.owner_id IS NOT NULL AND r.owner_id <> m.owner_id;
+     ```
+     Any row → **stop, report to the owner** (repair is a separate, owner-approved data fix; follow-up F1 closes the path).
+   - **P9 — the least-privilege global role exists (blocking, ≥ 1; used by the Part A re-point and by B-2's `Down()`; cross-review Opus LOW/Gemini MEDIUM):**
+     `SELECT id, name FROM roles WHERE owner_id IS NULL AND deleted_at IS NULL AND NOT is_super_admin AND NOT grants_admin AND NOT quick_access ORDER BY id;` (expected: `Developer`, `PM`, `Tester` on a seeded DB).
+   - **P11 — no membership holds the platform role (blocking, must print 0 rows; cross-review Opus MEDIUM, privilege escalation):**
+     `SELECT m.id, m.user_id, m.owner_id FROM workspace_memberships m JOIN roles r ON r.id = m.role_id WHERE r.is_super_admin;`
+     A row is a member whose sessions in that workspace carry `is_super_admin=true` today. **Stop and report to the owner as a security finding.**
    - **P7 — merged/aliases census (expected `0 | 0`):** `SELECT (SELECT count(*) FROM users WHERE merged_into_user_id IS NOT NULL), (SELECT count(*) FROM user_aliases);`
 2. Local e2e gate (§7 A6) PASS.
 3. Merge; CI green; ordinary `bash scripts/deploy-api.sh` (`DEPLOY.md` § Updating). The pre-flight must show **no** pending migration.
 4. **Verify:** `docker compose -f docker-compose.prod.yml logs --since 5m api | grep -iE "error|DB-11f invariant"` → nothing. Log in to `app.pointer.moamen.work` as super admin (Tenants page lists every workspace)
    and as a workspace admin (the picker/switcher shows the same "Home" badge as before). The DB-18 settings "Delete workspace" preview shows the same account count as before the deploy (compare with P2's `old` set).
-5. **Watch (≥ 24 h, this is the gate for Part B):** no `DB-11f invariant I1` line, no `23503`, no `42703`; `DemoCleanupService`/`WorkspaceDeletionService` sweeps log normally.
+5. **Watch (≥ 24 h, this is the gate for Part B):** `docker compose -f docker-compose.prod.yml logs --since 24h api | grep -E "DB-11f invariant I1|no global least-privilege role|23503|42703"` → nothing, **at any log level**.
+   `WorkspaceDeletionService` logs a refused delete at Information as "skipped (cancelled): <message>", and both loops retry every sweep (§2). **Any `DB-11f invariant I1` line blocks Part B** until the row is repaired under an owner-approved fix.
+   At the end of the window, re-run **P1** and **P11** on production (both must still print 0 rows). That proves A15's atomic creation held and nothing new appeared.
 
 **Part B (contract deploy, alone, ≥ 24 h after Part A)**
 0. Owner approval line (header) filled in and pasted verbatim into the PR; both markers match it.
@@ -794,7 +1022,7 @@ The columns were written throughout.
      WHERE d.refobjid = 'users'::regclass AND a.attname IN ('owner_id','role_id','approval_status');                                   -- 0 rows
      SELECT count(*), max("MigrationId") FROM "__EFMigrationsHistory";                                                                 -- 81 | 20260923220301_AddWorkspacesPauseAndDeletionState
      ```
-   - **P9 — B-2 `Down()` has a fallback role (blocking, ≥ 1):** `SELECT count(*) FROM roles WHERE owner_id IS NULL AND NOT is_super_admin;`
+   - **P9 again** (Part A step 1 query; blocking, ≥ 1 row), plus **P6b** and **P11** again (0 rows each).
    - **P10 — census of what B-2 nulls (informational):**
      `SELECT count(*) FILTER (WHERE r.is_super_admin) AS kept, count(*) FILTER (WHERE NOT r.is_super_admin) AS nulled FROM users u JOIN roles r ON r.id = u.role_id;`
 2. R11 rehearsal (§7 B6) and local e2e gate (§7 B7), both pasted into the PR.
@@ -812,6 +1040,11 @@ The columns were written throughout.
 
 ## 10. Out of scope
 
+**Follow-up F1 (recommended, not in this doc; security):** membership role assignment is not bounded to the membership's workspace or away from the platform role for an
+operator. `UserService` create/approve/update (`GetActiveRoleAsync`, `UserService.cs:910-915`, under a filter the super admin bypasses) and `RoleService.DeleteAsync` reassign (`RoleService.cs:292-299`
+guards only non-super callers) let a super admin put a membership in X on a role owned by W, which later makes W's hard delete 23503, or on the `is_super_admin` role, which makes that member's
+workspace sessions carry `is_super_admin=true`. Fix: refuse `role.IsSuperAdmin` always, and `role.OwnerId != null && role.OwnerId != <membership workspace>`, at every membership role write.
+DB-11f only guards it at deploy time (P6b, P11) and never copies such a role (§3.2, §3.4).
 `TenantResponse.Id` / `PublicId` (membership-sourced legacy DTO fields; the dashboard reads `publicId` — removing `Id` is a separate API-contract change for the dashboard-agent, not a schema change);
 replacing `users.role_id` with a boolean (D11f.2 alternative → DB-11g if chosen); `NewIdentity`'s now-unused parameters; FKs from content `author_id` columns (Q5);
 `workspace_memberships` schema or states; the DB-18 deletion e-mail/i18n wording; `DemoCleanupService`, `WorkspaceDeletionService`, `WorkspaceLifecycleService` (they call the shared rule unchanged);
@@ -821,3 +1054,42 @@ every historical migration file (R10); `clients/` (generated); the `pointer-dash
 
 **Dashboard:** none in source. `isHome`, `roleName`, `approvalStatus`, `publicId` keep their meaning. **Widget:** none (`templates.ts:71` reads `isHome`, semantics kept). **CLI:** none. Only a stray
 non-super **null-owner** key stops working (D11f.6). CLI keys minted since DB-11a carry the workspace (`owner_id`), so they are unaffected.
+
+## 12. Cross-review adjudication (2026-09-24)
+
+Reviews: `docs/db/reviews/REVIEW-DB11F-2026-09-24.md` (Gemini 3.8 Flash = G*, Opus = O*). Every finding was verified against `0d5f75a`. Several Gemini citations point at sections or files this doc and repo do not have (`§4.1`, `§5.2`, `Tests/IntegrationTestBase.cs`, migration `20260420000000_FixCustomRoleFkOnDelete`). Those were checked for substance, not location.
+**Owner decisions touched:** none of the owner-answered ones. D11f.1, D11f.2 and D11f.3 are unchanged, and the Part B approval line and its scope are unchanged. **D11f.7** (a default, not owner-answered) is refined and **D11f.8** is new. Both are flagged for owner confirmation in §0.
+
+| # | Finding (severity) | Verdict + why | Where changed |
+|---|---|---|---|
+| O1 | A10 `!e.Memberships.Any()` runs under the membership filter; a null-tenant non-super caller sees every identity in non-strict mode (HIGH) | **Accepted.** Verified `AppDbContext.cs:335-339`: the membership filter is `IsSuperAdmin \|\| (TenantId != null && OwnerId == TenantId)`, so every membership is hidden and `Any()` is false for all. Fix: the branch keys on the **platform role** `e.Role != null && e.Role.IsSuperAdmin`. That is exactly today's `owner_id IS NULL` set (P4) and is allowed by D11f.2. It was chosen over dropping the branch because it keeps today's non-strict behaviour exactly. Prod is strict, so there is no prod change either way | §2, §3.3, A10, §6 edit 3 (now also the regression test), §7 A3 |
+| O2 | For an operator reason, the audit row and file delete run before the transaction; an I1 throw leaves a live workspace with no files and a "deleted" audit row (MEDIUM) | **Accepted.** Verified `TenantService.cs:608-620` vs `:624`. Added a read-only pre-flight after `:581` returning `Result.Failure` (I1 and missing-fallback-role). The in-transaction throws stay as backstops | §3.2, A3, §6 tests 8, 8b |
+| O3 | I1 is not by construction: 8 creator sites save identity and membership separately, with side effects between (MEDIUM) | **Accepted.** Verified all 7 `NewIdentity` sites **plus** `DemoService.ProvisionAsync` (`:183` → `:249`). Each becomes a single save (deletes or moves only; the quick-access site saves the invite first, because the membership needs `invite.Id`). P1 and P11 are re-run at the end of the Part A watch | §2, §3.1, §3.3, A15, §6 14c, §7 A4, §9 step 5 |
+| O4 | Latent-FK fix incomplete: `workspace_memberships.role_id` can hold another workspace's role (super admin bypass); the re-point could copy it (MEDIUM) | **Accepted.** Verified `UserService.cs:910-915` (filtered read that super admins bypass) and `:267-272` (guard for non-super only). P6b is now **blocking**. The re-point no longer copies a membership role at all. §3.7 no longer claims the whole 23503 class is gone. Root guard → follow-up F1 | §2, §3.2, §3.7, §9 P6b, §10 F1 |
+| O5 | Privilege escalation: a membership on the `is_super_admin` role copied into `users.role_id` by the re-point or by B-2 `Down` (MEDIUM) | **Accepted.** Re-point and B-2 `Down` now use only the least-privilege global role (no super/admin/quick-access flag). New blocking **P11**: no membership holds the platform role (a row = existing security finding). Test 7 seeds exactly this shape | §3.2, §3.4 B-2 Down, §8, §9 P11, §6 test 7, §10 F1 |
+| O6 | `Include(u => u.Role)` on a required nav is an INNER JOIN on the filtered Role set, so profile/preferences 404 for a member whose creation role belongs to another workspace (MEDIUM) | **Accepted.** Verified: only `ProfileService.cs:32,45` and `PreferencesService.cs:39` Include under filters; all other Include sites use `IgnoreQueryFilters()`. Those three Includes are removed. The platform role is loaded filter-free (`IMembershipService.PlatformRoleAsync`; inline in ProfileService) | §2, §3.3, A1, A2, A7, A8, §6 14b, §7 A3 |
+| O7 | §7 A2 scan script broken (greedy prefix strip eats the tag); `Role.Users` never marked (MEDIUM) | **Accepted.** Reproduced: `s#^.*/db11f-scan/##` matches inside `[…csproj]`. Fixed order (`s/ \[[^]]*\]$//` first), `Role.Users` marked, sanity line added, expected per-file counts recomputed for the amended Part A code (baseline re-run at `0d5f75a`: 543 / 73 non-test) | §2, §7 A2 |
+| O8 | B-2 `Down` fallback "lowest-id global non-super" = `Workspace Admin` (admin-tier) (LOW) | **Accepted.** Verified `AdminSeeder.cs:16-25` order. The fallback now also excludes `grants_admin` and `quick_access` and requires `deleted_at IS NULL` (= `Developer`) | §2, §3.4, P9 |
+| O9 | The claim that the hosted loops catch only `DeletionPreconditionChangedException` is wrong (LOW) | **Accepted.** Verified `DemoCleanupService.cs:194`, `WorkspaceDeletionService.cs:166,179`. The text is corrected. §9 greps the message at every level, and any hit blocks Part B | §2, §3.2, §9 step 5 |
+| O10 | AdminSeeder promotes a workspace member matching `ADMIN__EMAIL`; the new rule excludes super admins, so the member's workspace delete would hit I1 (LOW) | **Accepted** as D11f.8: the seeder refuses (throws inside its own try/catch, `:130-178`, so the reconcile is skipped and logged and the plan seeding still runs) | §0 D11f.8, §3.3, A17, §6 14d, §7 A2 counts |
+| O11 | Stale line refs vs HEAD (LOW) | **Accepted.** Production code is unchanged `8f97871`→`0d5f75a` except `EmailLayout.cs`. Test refs re-anchored (Db18 `:2118/:2189`, InviteServiceTests `+2`/`+45`, UserGovernanceTests `:652`, WorkspaceTests `:382`). B9 says to trust the compiler's lines. Issue sites clarified (Role assignment vs Issue lines) | header, §2, §5 B9, §6 items 15, 19, 20 |
+| O12 | CI round-trip only exercises B-2; B-1 `Down` proven only in R11 (LOW) | **Accepted** (= G3). The R11 rollback drill is stated as B-1's only proof, and the generated down-script is pasted and checked (`SET NOT NULL`, no `DEFAULT 0`, B-2 refill first). A CI change is out of scope | §7 B6 |
+| O13 | "70 sites" should be 72 (+1 `Role.Users`) (NIT) | **Accepted**, corrected to the re-run figure: 73 lines outside `Tests/` (72 `User` + 1 `Role.Users`, per line+column) | §2 |
+| O14 | `grep -c … -r` prints per-file counts (NIT) | **Accepted**: `grep -rn … \| wc -l` | §7 A3 |
+| G1 | Membership-less identities: new rule excludes them; Part A throws, Part B orphans (HIGH) | **Accepted as clarification.** This was already D11f.4 with P1 blocking. It is now also impossible to create (O3), refused before side effects (O2), and the "survives in Part B" consequence is stated in D11f.4 | §0 D11f.4, §3.1 |
+| G2 | False parity claim "P2 and P3 together prove…" (HIGH) | **Rejected as stated**: no such sentence exists in this doc (checked). §1/§3.7 attribute parity to P2 only. A "what each pre-check proves" list was still added, to remove any doubt | §3.1 |
+| G3 | CI never rolls back B-1 (HIGH) | **Accepted** (= O12). The staging command Gemini cites names a migration that does not exist; the R11 drill is the proof | §7 B6 |
+| G4 | ProfileService fallback picks the earliest membership even if ended (MEDIUM) | **Accepted.** This is D11f.7, a default and not owner-answered. With no workspace in hand, the earliest **live** membership wins, else the earliest of any state. Flagged in §0 for owner confirmation | §0 D11f.7, A8, §6 test 14 |
+| G5 | Move the `demoUser.Role = role` removal to Part A (MEDIUM) | **Accepted.** After `SessionRole` nothing reads it (`DemoService.cs:292-294`) | §3.3, §3.5, A16, B4, §7 A2 |
+| G6 | B-2 `Down` fails if no global non-super role exists (MEDIUM) | **Accepted.** P9 is blocking in **both** parts (it also guards the Part A re-point) and uses the tightened predicate (O8) | §9 P9 |
+| G7 | CI probe must change in the same commit as B-1 (MEDIUM) | **Accepted** | §3.5, B8 |
+| G8 | `AdminSeeder.cs:158,160` are read-then-write, not writes (LOW) | **Accepted** | §2 inventory row |
+| G9 | Db18 test line drift (LOW) | **Accepted** (= O11) | §2, §6 |
+| G10 | Merged rows would surface as P2 `new_only` (LOW) | **Accepted as a note.** A `new_only` merged row is an intended fix, not a parity failure. Moot in prod (P7 = 0/0) | §3.1 |
+| G11 | `WorkspaceTests.cs` missing from a "§5.2 files table" (LOW) | **Rejected**: no such table; the edit is already §6 test 19 (now `:382`) | — |
+| G12 | `Tests/IntegrationTestBase.cs` `CreateUserAsync` legacy writes (LOW) | **Rejected**: the file does not exist. Every test that seeds or queries the removed members is covered by the compiler-driven B9 and recipes T1–T3 | — |
+| G13 | Rollback needs the Part A binary before `Down` (LOW) | **Accepted as clarification.** §8 already stopped the API first; the order is now stated explicitly | §8 |
+| G14 | Home should prefer an active membership (LOW) | **Rejected**: it would change owner-answered **D11f.3**. Its premise ("initialize the session in an inactive workspace") is also wrong, because home only sets `IsHome` on live candidates and names the mail workspace; the picker never uses it to choose. Recorded in §0 as a possible later owner change | §0 D11f.3 |
+| G15 | `WorkspaceTests` `:381` → `:382` (NIT) | **Accepted** | §2, §6 test 19 |
+| G16 | Verify the snapshot is unchanged when adding B-2 (NIT) | **Already covered**: B11 ("no snapshot change … stop") and §7 B2 (Designer `BuildTargetModel` diff empty) | — |
+
