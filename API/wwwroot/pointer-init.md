@@ -9,8 +9,8 @@ description: Use when the user wants to add, install, init, or integrate the <PO
 <POINTER_PRODUCT> is an element-level feedback widget delivered as a single Web Component,
 `<pointer-feedback>`, loaded from a <POINTER_PRODUCT> server's `/widget.js`. It renders entirely inside a
 Shadow DOM (no CSS collisions), shows a small toolbar, and lets authenticated stakeholders click any
-element and leave a comment. Projects **self-register**: the first time an app loads/comments with a
-given project key, it appears in the <POINTER_PRODUCT> dashboard.
+element and leave a comment. Projects are created in the <POINTER_PRODUCT> dashboard; the widget
+does not create one, so the project key you mount must already exist there.
 
 This skill wires the widget into the **current** app. Take the variables from `.pointer/config.json` when it exists (Step 0); ask the user only for what is missing, and never guess.
 
@@ -231,7 +231,8 @@ Add to `index.html` before `</body>`:
 </script>
 ```
 
-Add the env keys to `.env` (and document them in `.env.example`):
+Add the env keys to a development-scoped env file — `.env.development` or `.env.local`, never the
+shared `.env` (Scope rule 2) — and document them in `.env.example`:
 
 ```
 VITE_POINTER_SERVER=<POINTER_SERVER>          # deployed <POINTER_PRODUCT> URL; http://localhost:8090 only for local dev
@@ -274,8 +275,7 @@ stack uses:
     }
     // document.body is null while the parser is still inside <head>. Without this guard the
     // snippet throws "Cannot read properties of null (reading 'appendChild')" and mounts nothing
-    // whenever it is placed anywhere but just above </body> — which is exactly what happened the
-    // first time an agent followed this page.
+    // whenever it is placed anywhere but just above </body>.
     if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", mount);
     else mount();
   })();
@@ -319,7 +319,8 @@ user named. Never a shared lib, never a second app because it looked similar.
 
 Use a client component (e.g. in the root `app/layout.tsx` via a `'use client'` effect, or a
 `<Script>` for widget.js + an effect that creates `<pointer-feedback>`), reading values from
-`NEXT_PUBLIC_POINTER_*` env vars. Guard on an `enabled` flag so prod can opt out.
+`NEXT_PUBLIC_POINTER_*` env vars. Mount only when both values are set and non-empty (Scope rule 4),
+so a production build without them ships no widget.
 
 ### 3e. API Swagger / OpenAPI docs page
 
@@ -422,7 +423,7 @@ If a stack genuinely has no HTML substitution at all, say so to the user and ask
 from JavaScript — do not do it silently, and never as the default.
 
 ```
-# .env  (CRA shown — for custom Webpack, use the names your DefinePlugin injects)
+# .env.development  (never the shared .env — Scope rule 2; CRA shown — for custom Webpack, use the names your DefinePlugin injects)
 REACT_APP_POINTER_SERVER=<POINTER_SERVER>     # http://localhost:8090 only for local dev
 REACT_APP_POINTER_PROJECT=<project-key>
 ```
@@ -447,7 +448,7 @@ configuration so the gate is server-side — a page that is never rendered with 
 ships the script at all. Razor, as the most common case:
 
 ```cshtml
-@* appsettings.json:  "Pointer": { "Enabled": true, "Server": "...", "Project": "...", "Environment": "staging" } *@
+@* appsettings.Development.json:  "Pointer": { "Enabled": true, "Server": "...", "Project": "..." } *@
 @inject IConfiguration Config
 @if (Config.GetValue<bool>("Pointer:Enabled") && !string.IsNullOrWhiteSpace(Config["Pointer:Project"]))
 {
@@ -455,8 +456,7 @@ ships the script at all. Razor, as the most common case:
     <script src="@Config["Pointer:Server"]/widget.js" defer></script>
     <pointer-feedback
         project="@Config["Pointer:Project"]"
-        server="@Config["Pointer:Server"]"
-        environment="@(Config["Pointer:Environment"] ?? "staging")"></pointer-feedback>
+        server="@Config["Pointer:Server"]"></pointer-feedback>
     <!-- pointer-feedback:end -->
 }
 ```
@@ -591,8 +591,12 @@ not something either skill repeats on every run.
      -H 'Content-Type: application/json' \
      -d '{"frontend":["react","tailwind"],"backend":["dotnet","postgres"],"aiTool":"claude-code"}'
    ```
-   (`$SERVER`/`$PROJECT`/`${AUTH[@]}` — same login flow as `skill.md` Steps 1-2; use the same
-   automation credentials from Step 4 above.) The response's `data` is the authoritative merged
+   (`$SERVER`/`$PROJECT` are the server and project key from Step 0/1. `${AUTH[@]}` is
+   `-H "Authorization: Bearer <token>"`, where the token is `data.token` from
+   `POST $SERVER/api/auth/login-with-key` with body `{"apiKey":"<the Step 4 API key>"}` — the same
+   exchange `.pointer/pointer.sh` performs. With Node available, `npx pointer-feedback init` has
+   already registered the stack, and `npx pointer-feedback doctor --fix` re-registers it when its
+   `stack` check fails.) The response's `data` is the authoritative merged
    state — write it verbatim to a **committed** (not gitignored — this isn't a secret) repo-local
    file:
    ```bash
@@ -739,5 +743,6 @@ driving it through this skill instead.
   **Non-Vite stacks (Angular, Next, CRA, server-rendered):** there is no plugin yet. Say so plainly
   rather than inventing one — the widget still works, and applies fall back to matching on the
   element snapshot, which is slower and less exact.
-- Keep the `enabled` guard so production builds can ship without the widget when desired.
+- Keep the configuration-presence guard (Scope rule 4) so production builds without the values ship
+  without the widget.
 - **Privacy & self-hosting:** For the full engineering breakdown of what the widget captures, what is never captured, retention and deletion semantics, and self-hosting boundaries, see `<POINTER_SERVER>/data.html`.

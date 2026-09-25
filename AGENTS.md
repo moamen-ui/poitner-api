@@ -17,9 +17,11 @@
 > retired at tag `last-three-apps` / branch `legacy/angular-vue`. Any dashboard work targets React only.
 >
 > **The admin dashboard is a separate repo:**
-> [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) — the React app. It generates
-> its API layer from this API's Swagger via Orval — **if you change endpoints or DTOs, regenerate the
-> client** (`npm run generate-clients`).
+> [`pointer-dashboard`](https://github.com/moamen-ui/pointer-dashboard) — the React app. It does not
+> generate anything: its typed client is generated **here** from this API's Swagger via Orval and
+> installed there as a package. If you change endpoints or DTOs, annotate the inner type and check the
+> tag is in `orval.config.ts` `filters.tags`; the client is regenerated once per phase by the
+> [`dashboard-agent`](.claude/agents/dashboard-agent.md), not per change.
 
 ## Quick Reference
 
@@ -39,7 +41,7 @@ just up    # Start API + DB via Docker (API on :8090)
 | `just migrate name="MyMigration"` | repo root | Add EF Core migration |
 | `npm run generate-clients` | repo root | Regenerate the React API client package |
 | `npm run clients:local` | repo root | Local loop: generate, build, and publish the client to local Verdaccio |
-| `npm run build` | web-component/ | Build `<pointer-feedback>` → `API/wwwroot/pointer.{js,css}` |
+| `npm run build` | web-component/ | Build `<pointer-feedback>` → `API/wwwroot/widget.{js,css}` |
 | `npx pointer-feedback apply` | app repos | Apply pending feedback via CLI (`.pointer/pointer.sh` is no-Node fallback) |
 
 ### Key conventions
@@ -50,9 +52,10 @@ just up    # Start API + DB via Docker (API on :8090)
 2. **All API responses** are wrapped in `Result<T>` — the client mutator/interceptor unwraps it.
 3. Behind the prod TLS proxy (Caddy), forwarded headers are honored so `/embed.js` + served skills
    emit `https` URLs.
-4. **The web component is built, not hand-written.** `API/wwwroot/pointer.{js,css}` are build
+4. **The web component is built, not hand-written.** `API/wwwroot/widget.{js,css}` are build
    artifacts — edit the source in `web-component/src/` and run `npm run build`. Never edit the
-   generated files directly.
+   generated files directly. `API/wwwroot/pointer.{js,css}` are stale leftovers, not build output
+   (see [`web-component/CLAUDE.md`](web-component/CLAUDE.md)).
 5. **Customer-visible names are frozen** in [`docs/ON-DISK-CONTRACT.md`](docs/ON-DISK-CONTRACT.md)
    (`.pointer/` files, env vars, element attributes, storage keys, served URLs, …). A PR that adds a
    new one must update that doc **and** `Tests/OnDiskContractTests.cs` in the same commit — the guard
@@ -64,7 +67,7 @@ just up    # Start API + DB via Docker (API on :8090)
 ```
 pointer-api/
 ├── API/              ← .NET controllers, Program.cs, Swagger + /embed.js, static assets
-│   └── wwwroot/      ← served files; pointer.{js,css} are BUILD OUTPUT (from web-component/)
+│   └── wwwroot/      ← served files; widget.{js,css} are BUILD OUTPUT (from web-component/)
 ├── Application/      ← Services (Result + Scrutor), DTOs, FluentValidation
 ├── Domain/           ← Entities (BaseEntity audit), enums
 ├── Infrastructure/   ← EF Core + Postgres (snake_case), repositories, JWT, BCrypt

@@ -28,12 +28,15 @@ via Docker, API on `:8090`).
 > [`dashboard-agent`](.claude/agents/dashboard-agent.md) — see
 > [`docs/roadmap/execution/01-OVERVIEW.md` § Cross-repo sync agents](docs/roadmap/execution/01-OVERVIEW.md).
 
-## Critical Skill (READ FIRST)
+## Served skills
+
+These are product files that customers' coding agents run, not instructions for this repo. Read them
+when you change them, or when asked to add the widget to an app.
 
 - **[Integrate Pointer](API/wwwroot/pointer-init.md)** — the consumer-facing init skill, **served at
   `/pointer-init.md`** (same delivery model as the apply skill `skill.md`). A developer installs it
   into their app's `.claude/skills/pointer-init/SKILL.md` and runs it to add the `<pointer-feedback>`
-  widget: it asks for the variables (project key, server URL, environment), detects the stack
+  widget: it asks for the variables (project key, server URL), detects the stack
   (Vite/Angular/Next/static), injects the loader, wires env, and verifies.
 - **[Apply Feedback](API/wwwroot/skill.md)** — the feedback apply skill, **served at `/skill.md`**.
   Uses the CLI (`npx pointer-feedback apply`, `--plan`, `--mark`) to process pending comments and
