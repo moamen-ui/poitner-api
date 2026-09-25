@@ -1,0 +1,8 @@
+/* TC6 fixture (AI-rule precedence, docs/E2E_TEST_PLAN.md TC6): the design tokens the seeded
+   PROJECT-tier AI rule requires every colour to reference (e.g. `var(--brand)`) instead of a
+   hard-coded hex value. See seed.mjs's TC6 block for the exact rule text and the conflicting
+   personal rule ("Always use hard-coded hex colours") it must beat. */
+:root {
+  --brand: #2952e3;
+  --brand-contrast: #ffffff;
+}

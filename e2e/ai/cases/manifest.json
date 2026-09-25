@@ -39,6 +39,14 @@
       "repeat": 1,
       "resetPerRun": false,
       "description": "Cross-project isolation through the AI itself — must mention BETA content and zero ALPHA content."
+    },
+    {
+      "id": "tc6",
+      "promptFile": "tc6.txt",
+      "project": "e2e-tc6",
+      "repeat": 3,
+      "resetPerRun": true,
+      "description": "AI-rule precedence — a project-tier (admin) rule and a conflicting personal rule (same author) are both active on one comment; the project rule must win, and the agent must not stall before editing. resetPerRun=true because a prior run's PATCH leaves the comment Applied, emptying the queue for the next repetition — same reason TC3 resets."
     }
   ]
 }

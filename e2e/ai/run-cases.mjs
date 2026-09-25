@@ -1,15 +1,24 @@
-// Orchestrates Layer B (docs/E2E_TEST_PLAN.md): runs TC1-TC5 against every configured AI CLI,
+// Orchestrates Layer B (docs/E2E_TEST_PLAN.md): runs TC1-TC6 against every configured AI CLI,
 // scoring each via scripts/audit.mjs. Called by run-e2e.sh --with-ai, after reset+seed+probe+widget
-// have already run once (zero-AI). TC3 resets+reseeds before each of its 5 repetitions so one run's
-// PATCHes never leak into the next; every other case reuses whatever state is already there.
+// have already run once (zero-AI). TC3 and TC6 reset+reseed before each of their repetitions so one
+// run's PATCHes never leak into the next; every other case reuses whatever state is already there.
 import { readFileSync, mkdirSync, appendFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { runCase } from './harness.mjs';
-import { scoreTc3Run, scoreListCase } from '../scripts/audit.mjs';
+import { scoreTc3Run, scoreTc6Run, scoreListCase } from '../scripts/audit.mjs';
 import { PROJECTS } from '../scripts/lib/constants.mjs';
+
+// Project key -> fixture-app/ subdirectory to copy into the scratch repo. Was a two-way ternary
+// (alpha/beta only) before TC6 added a third project; kept as an explicit map rather than more
+// branches so a fourth case's project needs only one new entry here.
+const FIXTURE_BY_PROJECT_KEY = {
+  [PROJECTS.alpha.key]: 'alpha',
+  [PROJECTS.beta.key]: 'beta',
+  [PROJECTS.tc6.key]: 'tc6',
+};
 
 const execFileP = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
@@ -47,7 +56,7 @@ async function main() {
       }
 
       const prompt = readFileSync(join(here, 'cases', c.promptFile), 'utf8').trim();
-      const fixture = c.project === PROJECTS.beta.key ? 'beta' : 'alpha';
+      const fixture = FIXTURE_BY_PROJECT_KEY[c.project] || 'alpha';
 
       for (let i = 1; i <= c.repeat; i++) {
         const runLabel = c.repeat > 1 ? `${c.id}-run-${i}` : c.id;
@@ -70,6 +79,12 @@ async function main() {
 
         if (c.id === 'tc3') {
           const criteria = await scoreTc3Run(`${tool}-${runLabel}`);
+          console.log('   ', criteria);
+        } else if (c.id === 'tc6') {
+          const criteria = await scoreTc6Run(`${tool}-${runLabel}`, {
+            diff: result.diff,
+            answerText: result.answerText,
+          });
           console.log('   ', criteria);
         } else {
           const ea = expected.expectedAnswers[c.id] || {};
