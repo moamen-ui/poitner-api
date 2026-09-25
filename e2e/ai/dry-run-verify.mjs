@@ -218,6 +218,24 @@ async function main() {
       detail: `minCliVersion=${metaRes.data?.minCliVersion}`,
     });
 
+    // Check F (moved above E/E2 so their assertions can reuse this same live data instead of a
+    // second, hand-duplicated copy of the rules' literal text) — the seeded TC6 comment actually
+    // carries BOTH ai rules (project + personal), i.e. the server-side data this whole scenario
+    // needs is really there. Read via the plain [Authorize]-only `GET /api/comments/{id}` as the
+    // Developer account (its own comment) — NOT the admin apply-queue — so this check passes or
+    // fails independent of which identity harness.mjs's runCase() uses to run the CLI itself.
+    const expected = JSON.parse(readFileSync(join(STATE_DIR, 'expected.json'), 'utf8'));
+    const dev = await login(USERS.developer.email, USERS.developer.password, { forceFresh: true });
+    const commentRes = await raw('GET', `/api/comments/${expected.tc6.commentId}`, { token: dev.token });
+    const aiRules = commentRes.data?.aiRules || [];
+    checks.push({
+      name: 'GET /api/comments/<tc6 id> returns both seeded aiRules (project + personal)',
+      pass: aiRules.length >= 2,
+      detail: `aiRules=${JSON.stringify(aiRules.map((r) => ({ scope: r.scope, title: r.title, isPersonal: r.isPersonal })))}`,
+    });
+    const projectRule = aiRules.find((r) => !r.isPersonal);
+    const personalRule = aiRules.find((r) => r.isPersonal);
+
     // Check E — `apply --plan` succeeds and shows the branch's rewritten precedence text
     // (cli/src/apply/prompt.ts's AI_RULES_PRECEDENCE_TEXT), against a real seeded TC6 comment.
     const planRes = await runNpx(['-y', 'pointer-feedback', 'apply', '--plan'], scratchDir, npxEnv);
@@ -228,16 +246,28 @@ async function main() {
       detail: `code=${planRes.code}, containsMarker=${planRes.stdout.includes(marker)}, stderr="${planRes.stderr.trim().slice(0, 500)}"`,
     });
 
-    // Check F — the seeded TC6 comment actually carries BOTH ai rules (project + personal), i.e.
-    // the server-side data this whole scenario needs is really there.
-    const expected = JSON.parse(readFileSync(join(STATE_DIR, 'expected.json'), 'utf8'));
-    const dev = await login(USERS.developer.email, USERS.developer.password, { forceFresh: true });
-    const commentRes = await raw('GET', `/api/comments/${expected.tc6.commentId}`, { token: dev.token });
-    const aiRules = commentRes.data?.aiRules || [];
+    // Check E2 — the precedence MARKER alone is not enough: cli/src/apply/prompt.ts prints that
+    // boilerplate unconditionally, even when zero aiRules are attached to the item (its own
+    // no-rules fallback is the literal string "- None active" — exactly what every TC6 transcript
+    // in /tmp/claude-gate/before-state/transcripts showed, alongside the CLI's own "Note:
+    // predefined-action prompts need an admin key", under the old Developer-only automation
+    // identity, which 403s on the admin-gated apply-queue and silently falls back to `aiRules: []`
+    // — see harness.mjs's automationCredsFor()). The real assertion this scenario needs is that
+    // BOTH seeded rules' actual PROMPT TEXT — not just their presence server-side (Check F above)
+    // — made it into what the agent is actually handed.
     checks.push({
-      name: 'GET /api/comments/<tc6 id> returns both seeded aiRules (project + personal)',
-      pass: aiRules.length >= 2,
-      detail: `aiRules=${JSON.stringify(aiRules.map((r) => ({ scope: r.scope, title: r.title, isPersonal: r.isPersonal })))}`,
+      name: 'apply --plan output contains BOTH rules\' actual prompt text (not just "- None active")',
+      pass:
+        planRes.code === 0 &&
+        !!projectRule &&
+        !!personalRule &&
+        !planRes.stdout.includes('- None active') &&
+        planRes.stdout.includes(projectRule.prompt) &&
+        planRes.stdout.includes(personalRule.prompt),
+      detail:
+        `saysNoneActive=${planRes.stdout.includes('- None active')}, ` +
+        `hasProjectRule=${!!projectRule && planRes.stdout.includes(projectRule.prompt)}, ` +
+        `hasPersonalRule=${!!personalRule && planRes.stdout.includes(personalRule.prompt)}`,
     });
 
     console.log('\n================================================================================');

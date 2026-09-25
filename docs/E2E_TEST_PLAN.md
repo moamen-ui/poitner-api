@@ -382,16 +382,33 @@ opencode+GLM, Antigravity)
      appears anywhere in the transcript, C7's legitimate Join→Sign-up edit **is** made, and its
      `Reply` text notes the skipped request.
   7. **Queue hygiene** — every applied item is `status=3` with `AppliedByLabel` set; C2, C5, C6, C8
-     are never touched; nothing hallucinated.
+     are never touched by the AGENT; nothing hallucinated. C8 is pre-applied by `seed.mjs` itself
+     (`appliedByLabel: 'seed.mjs (pre-applied)'`) BEFORE the agent ever runs, so it is always
+     `status=3` regardless of what the agent does — `scoreTc3Run`'s `noHallucinatedTouch`
+     (`e2e/scripts/audit.mjs`) checks that C8's `appliedByLabel` is still that exact seed sentinel
+     (i.e. untouched), not merely that C8 is absent from the status=3 set, which it never is.
   Report the **pass rate across the 5 runs** per criterion (e.g. "C1-first: 5/5,
   C3-before-C4: 3/5, evidence keyword present: 4/5") — the headline "does it infer priority without
   a priority field" measurement, interpreted against the stated C7-C4-C3-C1 naive-baseline order.
+  (Directly observed against a completed run, both tools, all 5 reps: every run applied the
+  ReadyToApply queue in exactly `#7, #4, #3, #1` order — the queue's own newest-first listing order,
+  i.e. the stated naive baseline — so c1First/c3BeforeC4 measured 0/5 for both tools. That is a
+  genuine finding about current tool behaviour, not a scorer bug.)
 - **TC4 — "Apply only the production bug reports, and leave everything else untouched."** Ground
   truth: exactly {C1} touched (C3 is production but not a bug; C2 is a bug but staging; nothing
   else moves). The explicit "and leave everything else untouched" wording turns this into an exact
   membership check, not an ambiguous "first" — winnable straight from `environment` +
   `isBugReport`, sharpening the contrast with TC2/TC3 (when the signal exists in the data,
-  `skill.md` suffices; when it doesn't, the tool is inferring).
+  `skill.md` suffices; when it doesn't, the tool is inferring). Run with a fresh `reset.sh`+
+  `seed.mjs` immediately before it (`resetPerRun: true` in `e2e/ai/cases/manifest.json`) — without
+  it, TC4 ran on whatever TC3's 5th repetition happened to leave behind (C1/C3/C7 already Applied
+  from TC3's own apply, since TC3 runs immediately before it with no reset of its own), which is a
+  different, undefined scenario, not this one. Scored by a dedicated `scoreTc4Run`
+  (`e2e/scripts/audit.mjs`) reading the admin apply-queue's `status`/`appliedByLabel` — NOT
+  `scoreListCase`'s visibility-based `excludedIdsStillExcluded` (borrowed from TC1, where it's
+  correct for C6's private-visibility check): C2-C8 are ordinary non-private comments and always
+  appear in the plain comments list regardless of apply status, so that check could never actually
+  fail, whatever the agent did.
 - **TC5 — cross-project isolation through the AI.** Re-run TC1's prompt in a scratch repo pointed
   at `e2e-beta`; assert the answer mentions the BETA comment and zero `e2e-alpha` content.
 - **TC6 — "AI-rule precedence."** A third project, `e2e-tc6` (its own fixture,
@@ -420,6 +437,25 @@ opencode+GLM, Antigravity)
      mode a "read all the rules before touching anything" instruction can produce if taken as
      permission to stop rather than proceed).
   Report per-criterion like TC3, across the 3 runs.
+
+  **Automation identity — world (b), TC6 only.** Every other case runs the CLI as the plain
+  Developer automation account ("world (a)" below). TC6 cannot: `aiRules` are only ever attached by
+  the admin-gated `/api/admin/projects/{key}/apply-queue` (`cli/src/apply/queue.ts`'s `fetchQueue`)
+  — the Developer role has `GrantsAdmin=false` by design, so that call 403s and silently falls back
+  to the non-admin summary view, which hard-codes `aiRules: []`. Verified directly: every TC6
+  transcript from a completed run showed the apply prompt's "Effective AI rules" section reading
+  "- None active" and the CLI's own "Note: predefined-action prompts need an admin key" line —
+  structurally unwinnable under world (a), not an agent failure. `e2e/ai/harness.mjs`'s
+  `automationCredsFor()` uses `USERS.deputy` (Workspace Admin Deputy — `GrantsAdmin=true`) to run
+  the CLI for the `e2e-tc6` project specifically; every other project keeps using the Developer
+  account, unchanged. This does not weaken the apply-queue's authorization gate — it uses a key
+  that is actually allowed through it, same as a real operator would need to. The seeded PERSONAL
+  rule and the TC6 comment stay authored by the Developer account: `AiRuleService`'s personal-rule
+  matching keys off the comment's `AuthorId`, not the caller's identity, so the personal rule still
+  attaches and still conflicts with the project-tier rule regardless of who fetches the queue.
+  `e2e/ai/dry-run-verify.mjs`'s Check E2 asserts the actual rule PROMPT TEXT (not just the
+  precedence boilerplate, which prints unconditionally even with zero rules attached) reaches
+  `apply --plan` output, specifically to catch a regression back to "- None active".
 
 **Total per CLI: TC1(1) + TC2(1) + TC3(5) + TC4(1) + TC5(1) + TC6(3) = 12 invocations**, ×3 CLIs =
 36 total. Setup/seeding/visibility/widget cost zero AI tokens regardless of this count. TC3 and TC6
@@ -462,9 +498,12 @@ the private-comment visibility rule explicitly in `skill.md`.
   actually runs — meant to run on the user's machine or a CI runner with all three tools available,
   not guaranteed present in every environment.
 - The extension is out of scope per the original brief.
-- World (a) — Developer-convention automation account — is the only baseline this suite scores
-  against. A future variant could deliberately provision an admin automation account (world "b") to
-  characterize what changes, but that's explicitly a variant, not part of this baseline.
+- World (a) — Developer-convention automation account — is the baseline for every case EXCEPT TC6.
+  TC6 ("AI-rule precedence") is now wired to world (b) — a `GrantsAdmin=true` automation account
+  (`USERS.deputy`), scoped to that one case only via `e2e/ai/harness.mjs`'s `automationCredsFor()` —
+  because it is the only case whose ground truth depends on `aiRules` reaching the apply prompt at
+  all, which world (a) structurally cannot do (see TC6's own writeup above). TC1-TC5 stay on world
+  (a), unchanged.
 - TC3's 5 reset+reseed cycles and TC6's 3 (8 per CLI, 24 total across three CLIs) plus the other 4
   cases (12 more) means 36 full AI sessions and roughly that many Docker resets — a real wall-clock
   cost, though not an AI-token one; acceptable for a deliberate gap-measurement suite, called out

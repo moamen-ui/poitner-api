@@ -7,7 +7,7 @@ import { promisify } from 'node:util';
 import { mkdirSync, rmSync, cpSync, writeFileSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { USERS } from '../scripts/lib/constants.mjs';
+import { USERS, PROJECTS } from '../scripts/lib/constants.mjs';
 import { BASE_URL, raw, login } from '../scripts/lib/api.mjs';
 import { REGISTRY_URL, createScratchEnv, publishTarball } from '../scripts/lib/registry.mjs';
 
@@ -234,17 +234,43 @@ function installNpmRegistry(scratchDir) {
   writeFileSync(join(scratchDir, '.npmrc'), `registry=${REGISTRY_URL}/\n`, 'utf8');
 }
 
-async function fetchDeveloperApiKey() {
+async function fetchApiKeyFor(creds, label) {
   // forceFresh: true — same reason as scripts/audit.mjs's scorer logins. TC3/TC6 reset+reseed
   // between repetitions, which invalidates any cached JWT for this account; a cached token here
   // 404s the /api/me/api-key call exactly like the scorer's did before that fix.
-  const dev = await login(USERS.developer.email, USERS.developer.password, { forceFresh: true });
-  const keyRes = await raw('GET', '/api/me/api-key', { token: dev.token });
+  const user = await login(creds.email, creds.password, { forceFresh: true });
+  const keyRes = await raw('GET', '/api/me/api-key', { token: user.token });
   const apiKey = keyRes.data?.apiKey;
   if (!apiKey) {
-    throw new Error('harness: could not resolve the Developer automation API key from GET /api/me/api-key');
+    throw new Error(`harness: could not resolve the ${label} API key from GET /api/me/api-key`);
   }
   return apiKey;
+}
+
+// World (a) (docs/E2E_TEST_PLAN.md) — the Developer-convention automation account — for every case
+// EXCEPT TC6. TC6 ("AI-rule precedence") needs `aiRules` to actually reach the apply prompt, and
+// those are only ever attached by `/api/admin/projects/{key}/apply-queue`
+// (`[Authorize(Policy = Policies.Admin)]`, API/Controllers/Admin/ProjectsController.cs — "the only
+// prompt-emitting surface", deliberately admin-gated). The Developer role has `grantsAdmin: false`
+// by design (API/Seed/AdminSeeder.cs's DefaultRoles), so under World (a) that call always 403s and
+// cli/src/apply/queue.ts's fetchQueue() silently falls back to the non-admin summary view, which
+// hard-codes `aiRules: []` — verified directly: every TC6 transcript in
+// /tmp/claude-gate/before-state/transcripts (all tools, all runs) reports "None active" AI rules
+// and the CLI's own "Note: predefined-action prompts need an admin key" line. That made TC6
+// structurally unwinnable, not a real agent failure — the test plan's own "Known limitations" flags
+// exactly this as a variant ("world (b)") never wired up. Using `USERS.deputy` (Workspace Admin
+// Deputy — GrantsAdmin=true, the closest creatable non-superadmin admin-tier role, already seeded
+// for this purpose per constants.mjs) here is that world-(b) wiring, scoped to TC6 ONLY — every
+// other case keeps running the CLI as the plain Developer account (World (a)), unchanged. This does
+// NOT weaken any authorization: the apply-queue endpoint's [Authorize(Policy = Policies.Admin)]
+// gate is untouched; TC6 just now uses a key that is actually allowed through it, as a real operator
+// enabling AI-rule delivery would have to. The seeded PERSONAL rule and the TC6 comment stay
+// authored by USERS.developer (seed.mjs) — AiRuleService's personal-rule matching keys off the
+// COMMENT's AuthorId, not the caller's identity, so the personal rule still attaches and still
+// conflicts with the project-tier rule exactly as TC6 intends; only the identity used to FETCH the
+// queue (and therefore see aiRules at all) changes for this one project.
+function automationCredsFor(projectKey) {
+  return projectKey === PROJECTS.tc6.key ? USERS.deputy : USERS.developer;
 }
 
 // Mirrors what a real `pointer init` writes under `.pointer/` — NOT what the harness previously
@@ -255,7 +281,8 @@ async function fetchDeveloperApiKey() {
 // and falls back to the CLI's baked-in production default server with no project resolvable at
 // all — a real user's repo never looks like that.
 async function installRepoState(scratchDir, projectKey, toolKey, cliVersion) {
-  const apiKey = await fetchDeveloperApiKey();
+  const creds = automationCredsFor(projectKey);
+  const apiKey = await fetchApiKeyFor(creds, creds === USERS.deputy ? 'Workspace Admin Deputy (TC6 world-b)' : 'Developer automation');
 
   mkdirSync(join(scratchDir, '.pointer'), { recursive: true });
   writeFileSync(
@@ -303,6 +330,17 @@ export async function runCase(toolKey, fixture, projectKey, prompt, runLabel) {
   await sh('git', ['init', '-q'], scratchDir);
   await sh('git', ['add', '-A'], scratchDir);
   await sh('git', ['-c', 'user.email=e2e@example.test', '-c', 'user.name=e2e', 'commit', '-q', '-m', 'baseline'], scratchDir);
+  // Captured now, NOT re-derived as "HEAD" after invoke(): a real apply commits its own change
+  // (skill.md's documented convention — "Apply N pending Pointer comments") rather than leaving it
+  // as an uncommitted working-tree diff. `git diff HEAD` after that commit is empty (HEAD now IS
+  // the agent's own commit), which silently zeroed every TC6 diff-dependent criterion
+  // (buttonChanged/workspaceRuleWon/noStall) for every tool that correctly committed — verified
+  // against /tmp/claude-gate/before-state/scratch/claude-code-tc6-run-1 (`git diff HEAD~1` there
+  // shows the real, correct .submit-btn edit that `git diff HEAD` misses entirely). Diffing against
+  // this fixed baseline SHA instead captures the change whether the agent committed it or left it
+  // uncommitted, in both cases.
+  const { stdout: baselineShaRaw } = await sh('git', ['rev-parse', 'HEAD'], scratchDir);
+  const baselineSha = baselineShaRaw.trim();
 
   let answerText = '';
   let error = null;
@@ -332,7 +370,23 @@ export async function runCase(toolKey, fixture, projectKey, prompt, runLabel) {
 
   let diff = '';
   try {
-    const { stdout } = await sh('git', ['diff', 'HEAD'], scratchDir);
+    // Single-ref `git diff <baselineSha>` (not `<baselineSha>..HEAD`) deliberately: it compares
+    // that fixed commit against the CURRENT WORKING TREE, which is the union of whatever the agent
+    // committed plus whatever it left uncommitted — so it's correct whether the agent applies via
+    // a commit (the documented convention) or just edits files on disk.
+    //
+    // `--unified=1000` (git's default is 3 lines of context): scoreTc6Run's `touchedButtonRule`
+    // check is a literal `/submit-btn/.test(diff)` against the diff TEXT, which only sees the
+    // `.submit-btn {` selector line if it falls inside the shown context — with the default 3
+    // lines it does NOT for every edit shape (verified against
+    // /tmp/claude-gate/before-state/scratch/opencode-glm-tc6-run-1: a real, correct edit inside
+    // `.submit-btn { ... }` produced a 3-line-context diff whose hunk header's own heuristic
+    // grabbed the wrong preceding selector, "body {", and the `.submit-btn {` line itself never
+    // appeared in the diff text at all). These fixture files (style.css) are tiny by design (see
+    // its own header comment: "Keep this file's structure stable so a git diff against it stays a
+    // meaningful, narrow check"), so a huge context number is effectively "the whole file" with no
+    // real cost.
+    const { stdout } = await sh('git', ['diff', '--unified=1000', baselineSha], scratchDir);
     diff = stdout;
   } catch {
     // no commits to diff against if invoke() failed before any tool edits — fine, diff stays empty

@@ -29,8 +29,8 @@
       "promptFile": "tc4.txt",
       "project": "e2e-alpha",
       "repeat": 1,
-      "resetPerRun": false,
-      "description": "Winnable-from-documented-fields case — exact membership check ({C1} only)."
+      "resetPerRun": true,
+      "description": "Winnable-from-documented-fields case — exact membership check ({C1} only). resetPerRun=true (was false): without it, TC4 ran on whatever state TC3's 5th repetition happened to leave behind (C1/C3/C7 already Applied from TC3's own apply), which is a different, undefined scenario, not '{C1} ReadyToApply, agent must apply only it' — verified directly: claude-code-tc4's transcript in /tmp/claude-gate/before-state/transcripts shows the agent correctly observing 'All three production comments are already marked Applied' and declining to touch anything, which is the CORRECT response to that (contaminated) state, not a real test of this case's intended scenario."
     },
     {
       "id": "tc5",

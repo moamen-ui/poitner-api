@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { runCase, isToolBinaryAvailable } from './harness.mjs';
-import { scoreTc3Run, scoreTc6Run, scoreListCase } from '../scripts/audit.mjs';
+import { scoreTc3Run, scoreTc4Run, scoreTc6Run, scoreListCase } from '../scripts/audit.mjs';
 import { PROJECTS } from '../scripts/lib/constants.mjs';
 import { restartApi } from '../scripts/restart-api.mjs';
 
@@ -24,7 +24,13 @@ const FIXTURE_BY_PROJECT_KEY = {
 const execFileP = promisify(execFile);
 const here = dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = join(here, '..', 'state');
-const expected = JSON.parse(readFileSync(join(STATE_DIR, 'expected.json'), 'utf8'));
+// Read fresh wherever used, not cached here — see audit.mjs's loadExpected() for why a
+// module-level read-once would be stale relative to TC3/TC4/TC6's own resetAndReseed() calls
+// below (harmless today only because comment ids happen to be deterministic across a full
+// `docker compose down -v` reset; still the wrong thing to rely on).
+function loadExpected() {
+  return JSON.parse(readFileSync(join(STATE_DIR, 'expected.json'), 'utf8'));
+}
 const manifest = JSON.parse(readFileSync(join(here, 'cases', 'manifest.json'), 'utf8'));
 
 // Tools to attempt. A tool whose binary genuinely is not on PATH is skipped entirely (checked via
@@ -159,13 +165,20 @@ async function main() {
         let scored;
         if (c.id === 'tc3') {
           scored = await scoreTc3Run(`${tool}-${runLabel}`);
+        } else if (c.id === 'tc4') {
+          // Dedicated scorer, not scoreListCase — see audit.mjs's scoreTc4Run for why (TC4's
+          // ground truth is apply STATUS, not list visibility).
+          scored = await scoreTc4Run(`${tool}-${runLabel}`, {
+            projectKey: c.project,
+            answerText: result.answerText,
+          });
         } else if (c.id === 'tc6') {
           scored = await scoreTc6Run(`${tool}-${runLabel}`, {
             diff: result.diff,
             answerText: result.answerText,
           });
         } else {
-          const ea = expected.expectedAnswers[c.id] || {};
+          const ea = loadExpected().expectedAnswers[c.id] || {};
           scored = await scoreListCase(`${runLabel} — ${tool}`, {
             projectKey: c.project,
             includeIds: ea.includeIds || [],
