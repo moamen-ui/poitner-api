@@ -481,33 +481,14 @@ app.MapGet(
     (HttpContext ctx) =>
     {
         var origin = PointerUrlResolver.ResolvePublicUrl(app.Configuration, ctx.Request);
-        static bool Safe(string s) =>
-            s.Length > 0 && s.All(ch => char.IsLetterOrDigit(ch) || ch is '.' or '_' or '-');
         var project = ctx.Request.Query["project"].ToString();
         var environment = ctx.Request.Query["environment"].ToString();
-        var safeProject = Safe(project) ? project : "";
-        var safeEnv = Safe(environment) ? environment : "staging";
-        var js = $$"""
-(function () {
-  if (window.__pointerEmbedded) return;
-  window.__pointerEmbedded = true;
-  var server = '{{origin}}';
-  function mount() {
-    var s = document.createElement('script');
-    s.src = server + '/widget.js';
-    s.defer = true;
-    document.head.appendChild(s);
-    var el = document.createElement('pointer-feedback');
-    el.setAttribute('project', '{{safeProject}}');
-    el.setAttribute('server', server);
-    el.setAttribute('environment', '{{safeEnv}}');
-    document.body.appendChild(el);
-  }
-  // embed.js may run in <head> before <body> exists — wait for the DOM.
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount);
-  else mount();
-})();
-""";
+        var safeProject = EmbedJsBuilder.Safe(project) ? project : "";
+        // Only pin `environment` when it was explicitly requested and valid — see EmbedJsBuilder's
+        // remarks. Absent, empty, or invalid means "let the widget resolve it from the page origin",
+        // not "staging".
+        var safeEnv = EmbedJsBuilder.Safe(environment) ? environment : null;
+        var js = EmbedJsBuilder.Build(origin, safeProject, safeEnv);
         ctx.Response.ContentType = "application/javascript; charset=utf-8";
         return ctx.Response.WriteAsync(js);
     }

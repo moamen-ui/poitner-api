@@ -337,8 +337,7 @@ section of `appsettings.json` so it's toggled/tuned per environment (override in
 "<POINTER_PRODUCT>": {
   "Enabled": true,
   "Server": "<POINTER_SERVER>",
-  "Project": "",
-  "Environment": "staging"
+  "Project": ""
 }
 ```
 
@@ -349,18 +348,22 @@ var p = app.Configuration.GetSection("<POINTER_PRODUCT>");
 var pEnabled = p.GetValue("Enabled", false);
 var pServer  = (p["Server"] ?? "<POINTER_SERVER>").TrimEnd('/');
 var pProject = string.IsNullOrWhiteSpace(p["Project"]) ? app.Environment.ApplicationName : p["Project"]!;
-var pEnv     = string.IsNullOrWhiteSpace(p["Environment"]) ? "staging" : p["Environment"]!;
+var pEnv     = p["Environment"]; // unset by default — see below
+var pEnvQuery = string.IsNullOrWhiteSpace(pEnv) ? "" : $"&environment={Uri.EscapeDataString(pEnv)}";
 var pAllow   = pEnabled ? $" {pServer}" : "";   // origins to add to the Swagger CSP
 
 app.UseSwaggerUI(c =>
 {
     if (pEnabled)
-        c.InjectJavascript($"{pServer}/embed.js?project={Uri.EscapeDataString(pProject)}&environment={Uri.EscapeDataString(pEnv)}");
+        c.InjectJavascript($"{pServer}/embed.js?project={Uri.EscapeDataString(pProject)}{pEnvQuery}");
 });
 ```
 
 `Enabled` turns the whole thing on/off (per environment); `Project` blank → this app's own name;
-`Server` is the <POINTER_PRODUCT> URL; `Environment` tags the comments.
+`Server` is the <POINTER_PRODUCT> URL. Leave `Environment` unset — the server resolves it per request
+from the page origin, same as everywhere else. Only set it if you deliberately want to pin this
+docs page's comments to one environment regardless of origin (rare); doing so **overrides** that
+resolution, exactly as an `environment` attribute does anywhere else (see above).
 
 **⚠️ CSP — the common gotcha.** If the docs page sends a `Content-Security-Policy` (many API
 templates do, scoped to `/swagger`), the cross-origin widget is blocked until you allowlist the
