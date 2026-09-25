@@ -332,7 +332,7 @@ test('R2-02-01 — mcp: tools/list matches catalogue', async () => {
     for (const [tool, properties] of Object.entries(TOOL_PROPERTIES)) {
       expect(sortedKeys(byName[tool].inputSchema.properties ?? {}), `${tool} property key set`).toEqual(properties);
     }
-    expect(byName.pointer_set_status.inputSchema.properties.status.enum).toEqual(['open', 'ready', 'applied', 'archived']);
+    expect(byName.pointer_set_status.inputSchema.properties.status.enum).toEqual(['open', 'ready', 'archived']);
     expect(byName.pointer_list_comments.inputSchema.properties.pageSize.minimum).toBe(1);
     expect(byName.pointer_list_comments.inputSchema.properties.pageSize.maximum).toBe(100);
     expect(byName.pointer_commit_and_mark.inputSchema.properties.ids.type).toBe('array');
