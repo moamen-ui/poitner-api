@@ -31,6 +31,15 @@
 #   E2E_AI_TOOLS       Pass-through to e2e/ai/run-cases.mjs's own `TOOLS` list (comma-separated,
 #                      default `claude-code,opencode-glm,antigravity`) — only read when
 #                      E2E_GATE_WITH_AI=1. e.g. `E2E_AI_TOOLS=claude-code` to run only one tool.
+#   E2E_AI_CASES       Pass-through to e2e/ai/run-cases.mjs's own case filter (comma-separated case
+#                      ids from e2e/ai/cases/manifest.json, e.g. `tc3,tc6`) — only read when
+#                      E2E_GATE_WITH_AI=1. Unset (default) runs every case. Combine with
+#                      E2E_AI_TOOLS for a cheap targeted repro instead of the full TC1-TC6 sweep
+#                      across every tool, e.g.:
+#                        E2E_GATE_WITH_AI=1 E2E_AI_TOOLS=claude-code,opencode-glm \
+#                          E2E_AI_CASES=tc3,tc6 bash scripts/local-e2e-gate.sh <worktree>
+#                      The full AI suite is the same invocation with both vars unset:
+#                        E2E_GATE_WITH_AI=1 bash scripts/local-e2e-gate.sh <worktree>
 #
 # Exit status: non-zero if any phase fails (matching run-e2e.sh's own semantics); the phase-by-phase
 # table from e2e/state/report.md is always printed before exiting, pass or fail.

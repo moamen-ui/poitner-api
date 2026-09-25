@@ -297,6 +297,14 @@ if [[ " ${FLAGS[*]:-} " =~ " ai " ]]; then
   # The AI harness publishes the branch's CLI build to this stack's Verdaccio so `npx pointer-feedback`
   # resolves to the build under test — the registry phase stops Verdaccio when it finishes, so start it
   # again here (same compose project/files as the registry phase) and stop it afterwards.
+  #
+  # ai/run-cases.mjs also reads E2E_AI_CASES directly (comma-separated case ids, e.g.
+  # `E2E_AI_CASES=tc3,tc6`) — unset (the default) runs every case in ai/cases/manifest.json, same
+  # as before this existed. Combined with E2E_AI_TOOLS below, this is the cheap targeted repro: e.g.
+  # `E2E_GATE_WITH_AI=1 E2E_AI_TOOLS=claude-code,opencode-glm E2E_AI_CASES=tc3,tc6 bash
+  # scripts/local-e2e-gate.sh <worktree>` runs only TC3+TC6 for both real tools instead of the full
+  # TC1-TC6 sweep. The full AI suite (every case, every tool) is just E2E_GATE_WITH_AI=1 with
+  # neither var set.
   AI_COMPOSE_ARGS=()
   [ -n "${E2E_COMPOSE_PROJECT:-}" ] && AI_COMPOSE_ARGS+=(-p "${E2E_COMPOSE_PROJECT}")
   if [ -n "${E2E_COMPOSE_FILES:-}" ]; then
