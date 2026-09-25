@@ -29,7 +29,7 @@ export async function scoreTc3Run(label) {
   // The apply-queue read is [Authorize(Policy = Policies.Admin)]; the Developer automation identity
   // (grantsAdmin: false) gets 403 there, which crashed the whole AI phase at TC3. The scorer is a
   // test oracle, so it reads as the Workspace Admin; the agent under test still runs as Developer.
-  const admin = await login(TENANT_OWNER.email, TENANT_OWNER.password);
+  const admin = await login(TENANT_OWNER.email, TENANT_OWNER.password, { forceFresh: true });
   const res = await get(`/api/admin/projects/${PROJECTS.alpha.key}/apply-queue?status=3&pageSize=100`, { token: admin.token });
   const applied = res.items; // CommentApplyItemDto[]: id, status, appliedAt, appliedByLabel, replies[]...
   const byId = Object.fromEntries(applied.map((i) => [i.id, i]));
@@ -107,7 +107,7 @@ function looksLikeStall(answerText) {
 }
 
 export async function scoreTc6Run(label, { diff = '', answerText = '' } = {}) {
-  const dev = await login(USERS.developer.email, USERS.developer.password);
+  const dev = await login(USERS.developer.email, USERS.developer.password, { forceFresh: true });
   const tc6 = expected.tc6;
 
   // GET /api/comments/{id} — NOT GET /api/admin/projects/{key}/apply-queue. The apply-queue
@@ -168,7 +168,7 @@ export async function scoreTc6Run(label, { diff = '', answerText = '' } = {}) {
 // Generic single-case scorer for TC1/TC2/TC4/TC5 — combines server state with the transcript text
 // the harness captured. `answerText` is the AI tool's own final response, read from the transcript.
 export async function scoreListCase(label, { projectKey, includeIds = [], excludeIds = [], answerText = '' }) {
-  const dev = await login(USERS.developer.email, USERS.developer.password);
+  const dev = await login(USERS.developer.email, USERS.developer.password, { forceFresh: true });
   const res = await get(`/api/projects/${projectKey}/comments?pageSize=100`, { token: dev.token });
   const serverIds = new Set(res.items.map((c) => c.id));
 
