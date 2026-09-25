@@ -67,7 +67,7 @@ export async function scoreTc3Run(label) {
     detail
   });
 
-  return criteria;
+  return { criteria, result, detail };
 }
 
 // TC6 ("AI-rule precedence") scorer. Unlike TC3/TC1-5, TC6 needs the SCRATCH REPO's git diff (to
@@ -162,7 +162,7 @@ export async function scoreTc6Run(label, { diff = '', answerText = '' } = {}) {
     detail,
   });
 
-  return criteria;
+  return { criteria, result, detail };
 }
 
 // Generic single-case scorer for TC1/TC2/TC4/TC5 — combines server state with the transcript text
@@ -192,7 +192,7 @@ export async function scoreListCase(label, { projectKey, includeIds = [], exclud
     detail
   });
 
-  return criteria;
+  return { criteria, result, detail };
 }
 
 // CLI entry: `node audit.mjs tc3 <label>` | `node audit.mjs tc6 <label> <scratchDir> [transcriptPath]`

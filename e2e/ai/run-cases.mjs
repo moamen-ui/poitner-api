@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { runCase } from './harness.mjs';
+import { runCase, isToolBinaryAvailable } from './harness.mjs';
 import { scoreTc3Run, scoreTc6Run, scoreListCase } from '../scripts/audit.mjs';
 import { PROJECTS } from '../scripts/lib/constants.mjs';
 import { restartApi } from '../scripts/restart-api.mjs';
@@ -27,9 +27,21 @@ const STATE_DIR = join(here, '..', 'state');
 const expected = JSON.parse(readFileSync(join(STATE_DIR, 'expected.json'), 'utf8'));
 const manifest = JSON.parse(readFileSync(join(here, 'cases', 'manifest.json'), 'utf8'));
 
-// Tools to attempt — a tool that isn't installed/available fails its first run with a clear error
-// and is skipped for the rest of the suite (recorded in report.md), rather than aborting everything.
+// Tools to attempt. A tool whose binary genuinely is not on PATH is skipped entirely (checked via
+// isToolBinaryAvailable() — see harness.mjs); a tool whose binary IS present but errors on a given
+// invocation is NOT skipped for the rest of the suite — that one run/case is recorded as ERROR and
+// the tool keeps going. (Previously: any single invocation error, for any reason, permanently
+// skipped every remaining case for that tool — a transient/model-side error on case 1 of 9 hid the
+// other 8 entirely, e.g. tc3-run-2 erroring took out tc4-tc6 too.)
 const TOOLS = (process.env.E2E_AI_TOOLS || 'claude-code,opencode-glm,antigravity').split(',');
+
+// Optional subset filter, e.g. `E2E_AI_CASES=tc3,tc6` — cheaper reproduction of a specific
+// regression without paying for the full TC1-TC6 sweep across every tool. Unset (the normal case)
+// runs every case in manifest.json, unchanged from before this existed.
+const CASE_FILTER = process.env.E2E_AI_CASES
+  ? new Set(process.env.E2E_AI_CASES.split(',').map((s) => s.trim()).filter(Boolean))
+  : null;
+const casesToRun = CASE_FILTER ? manifest.cases.filter((c) => CASE_FILTER.has(c.id)) : manifest.cases;
 
 async function resetAndReseed() {
   await execFileP('bash', [join(here, '..', 'scripts', 'reset.sh')], { cwd: join(here, '..') });
@@ -43,6 +55,35 @@ async function resetAndReseed() {
   // that every TC3/TC6 repetition starts from the server's real configured minimum, regardless of
   // what any earlier phase left behind.
   await restartApi();
+}
+
+// One row per (tool, case-run) attempted or skipped — printed as a scorecard at the end and used
+// to decide the phase's own exit code (see main()'s bottom). `status` is one of PASS/FAIL/ERROR/SKIP.
+const scorecard = [];
+
+function padEnd(s, n) {
+  s = String(s);
+  return s.length >= n ? s : s + ' '.repeat(n - s.length);
+}
+
+function printScorecard() {
+  console.log('\n================================================================================');
+  console.log(' AI PHASE SCORECARD');
+  console.log('================================================================================');
+  const header = `${padEnd('TOOL', 16)} ${padEnd('CASE', 14)} ${padEnd('STATUS', 8)} DETAIL`;
+  console.log(header);
+  console.log('-'.repeat(header.length + 40));
+  for (const row of scorecard) {
+    console.log(`${padEnd(row.tool, 16)} ${padEnd(row.case, 14)} ${padEnd(row.status, 8)} ${row.detail || ''}`);
+  }
+  console.log('================================================================================');
+
+  const reportPath = join(STATE_DIR, 'report.md');
+  const lines = ['\n## Layer B — AI phase scorecard\n', '| tool | case | status | detail |', '|---|---|---|---|'];
+  for (const row of scorecard) {
+    lines.push(`| ${row.tool} | ${row.case} | ${row.status} | ${(row.detail || '').replace(/\|/g, '/')} |`);
+  }
+  appendFileSync(reportPath, lines.join('\n') + '\n');
 }
 
 async function main() {
@@ -60,22 +101,26 @@ async function main() {
   console.log('==> Restoring the server\'s normal minimum CLI version before any AI case runs');
   await restartApi();
 
-  const availableTools = [];
+  let casesRun = 0; // real invocations attempted (success or error) — zero of these means nothing
+                     // was measured at all (see the bottom check, unchanged from before).
+  let casesFailed = 0; // ERROR or SKIP entries — these are what make the phase dishonest if ignored.
+
   for (const tool of TOOLS) {
-    availableTools.push(tool); // availability is discovered on first real invocation, not probed ahead of time
-  }
-
-  let casesRun = 0;
-  for (const tool of availableTools) {
-    console.log(`\n=== Tool: ${tool} ===`);
-    let toolFailedOnce = false;
-
-    for (const c of manifest.cases) {
-      if (toolFailedOnce) {
-        appendFileSync(reportPath, `\n### ${c.id} — ${tool}: SKIPPED (tool unavailable)\n`);
-        continue;
+    const avail = await isToolBinaryAvailable(tool);
+    if (!avail.available) {
+      console.log(`\n=== Tool: ${tool} — UNAVAILABLE (${avail.reason}) — skipping all its cases ===`);
+      for (const c of casesToRun) {
+        const label = `${tool}-${c.id}`;
+        appendFileSync(reportPath, `\n### ${c.id} — ${tool}: SKIPPED (${avail.reason})\n`);
+        scorecard.push({ tool, case: c.id, status: 'SKIP', detail: avail.reason });
+        casesFailed++;
       }
+      continue;
+    }
 
+    console.log(`\n=== Tool: ${tool} ===`);
+
+    for (const c of casesToRun) {
       const prompt = readFileSync(join(here, 'cases', c.promptFile), 'utf8').trim();
       const fixture = FIXTURE_BY_PROJECT_KEY[c.project] || 'alpha';
 
@@ -92,41 +137,68 @@ async function main() {
         try {
           result = await runCase(tool, fixture, c.project, prompt, `${runLabel}`);
         } catch (err) {
-          console.error(`    tool invocation failed: ${err.message}`);
-          appendFileSync(reportPath, `\n### ${runLabel} — ${tool}: TOOL UNAVAILABLE/ERRORED\n\n${err.message}\n`);
-          toolFailedOnce = true;
-          break;
+          // A single invocation erroring (agent crash, transient network blip, model refusal,
+          // timeout, npx registry hiccup, ...) is recorded as ERROR for THIS case/run only — the
+          // tool is NOT marked unavailable and the remaining cases/runs still execute. Only a
+          // missing binary (checked once, above, before any case runs) skips the rest of a tool.
+          console.error(`    ${runLabel} — ${tool}: ERROR: ${err.message}`);
+          const detail =
+            `exit code: ${err.code ?? 'n/a'}, signal: ${err.signal ?? 'n/a'}, ` +
+            `stderr: ${(err.stderr || '').trim().slice(0, 300)}`;
+          appendFileSync(
+            reportPath,
+            `\n### ${runLabel} — ${tool}: ERROR\n\n${err.message}\n\n${detail}\n` +
+              (err.transcriptPath ? `\nTranscript: ${err.transcriptPath}\n` : ''),
+          );
+          scorecard.push({ tool, case: runLabel, status: 'ERROR', detail });
+          casesFailed++;
+          continue; // next repeat/case for this same tool — do not abort the tool
         }
 
         casesRun++;
+        let scored;
         if (c.id === 'tc3') {
-          const criteria = await scoreTc3Run(`${tool}-${runLabel}`);
-          console.log('   ', criteria);
+          scored = await scoreTc3Run(`${tool}-${runLabel}`);
         } else if (c.id === 'tc6') {
-          const criteria = await scoreTc6Run(`${tool}-${runLabel}`, {
+          scored = await scoreTc6Run(`${tool}-${runLabel}`, {
             diff: result.diff,
             answerText: result.answerText,
           });
-          console.log('   ', criteria);
         } else {
           const ea = expected.expectedAnswers[c.id] || {};
-          const criteria = await scoreListCase(`${runLabel} — ${tool}`, {
+          scored = await scoreListCase(`${runLabel} — ${tool}`, {
             projectKey: c.project,
             includeIds: ea.includeIds || [],
             excludeIds: ea.excludeIds || [],
             answerText: result.answerText,
           });
-          console.log('   ', criteria);
         }
+        console.log('   ', scored.criteria);
+        if (scored.result !== 'PASS') casesFailed++;
+        scorecard.push({ tool, case: runLabel, status: scored.result, detail: scored.detail });
       }
     }
   }
+
+  printScorecard();
 
   console.log(`\n==> Layer B complete. See ${reportPath}`);
   // A run where every tool failed to start measured nothing — report that as a failure, not a pass
   // (a Verdaccio that was down once made both tools "unavailable" and the phase still went green).
   if (casesRun === 0) {
-    console.error('Layer B ran zero cases: every AI tool failed to start (see the TOOL UNAVAILABLE entries above).');
+    console.error('Layer B ran zero cases: every AI tool failed to start (see the TOOL UNAVAILABLE/SKIPPED entries above).');
+    process.exit(1);
+  }
+  // Make the phase's own exit code match the scorecard: previously this only ever failed on the
+  // zero-cases case above, so `run_phase`'s `node ai/run-cases.mjs && node scripts/audit.mjs`
+  // reported the "ai" phase as PASS in run-e2e.sh's report.md even when every case underneath it
+  // FAILed, ERRORed, or was SKIPped — e.g. tc3-run-2 erroring and tc4-6 being silently skipped
+  // (the bug this whole harness pass exists to fix) still showed `ai | PASS`. Any ERROR or SKIP
+  // (a tool/case that never really ran) fails the phase outright; a scoring FAIL also fails it —
+  // the agent's own bad behavior is exactly what this phase exists to catch, so it should read as
+  // a failed phase too, not a quietly-swallowed one.
+  if (casesFailed > 0) {
+    console.error(`Layer B: ${casesFailed} case/run(s) were not a clean PASS (see the scorecard above) — failing the ai phase.`);
     process.exit(1);
   }
 }
