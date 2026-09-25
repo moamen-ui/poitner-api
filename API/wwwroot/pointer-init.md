@@ -243,6 +243,11 @@ Vite substitutes `%VITE_*%` in `index.html`. There is no separate on/off flag: t
 widget only when `VITE_POINTER_SERVER` is a URL, so a build that must ship without <POINTER_PRODUCT>
 simply leaves it empty and carries zero <POINTER_PRODUCT> code paths.
 
+**Testing a build locally.** `vite build` defaults to mode `production`, which does not load
+`.env.development` — by design, the same guard that keeps <POINTER_PRODUCT> out of a real production
+build. To see it in `vite preview` after a build, build with `vite build --mode development` (or
+just use `vite dev`, which already defaults to mode `development`).
+
 ### 3b. Plain static HTML
 
 Inline literal values before `</body>`:

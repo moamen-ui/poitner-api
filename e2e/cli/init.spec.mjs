@@ -85,7 +85,7 @@ test('R1-02-04 — init-yes-ci', async () => {
     expect(sub1.json?.cliVersion).toBeTruthy();
 
     const expectedFiles = [
-      '.env',
+      '.env.development',
       'index.html',
       '.pointer/config.json',
       '.pointer/credentials.env',
@@ -94,6 +94,8 @@ test('R1-02-04 — init-yes-ci', async () => {
     for (const f of expectedFiles) {
       expect(sub1.json?.files).toContain(f);
     }
+    // Never the shared `.env` (pointer-init.md Scope rule 2).
+    expect(existsSync(join(repo1.dir, '.env'))).toBe(false);
 
     // Capture project ID for teardown
     const projectsList = await raw('GET', '/api/admin/projects', { token: wsAdmin.token });
