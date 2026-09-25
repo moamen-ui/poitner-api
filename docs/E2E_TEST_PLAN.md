@@ -225,10 +225,19 @@ e2e/
 │   │                         #   installs the served skill files per each AI CLI's own convention
 │   │                         #   (a per-tool config table this file owns — Claude Code →
 │   │                         #   .claude/skills/; opencode+GLM / Antigravity → their documented
-│   │                         #   rule/skill directories), writes env + the Developer automation
-│   │                         #   credential, git init+commit, runs the CLI non-interactively with
-│   │                         #   exactly ONE prompt, captures the full session transcript to
-│   │                         #   e2e/state/transcripts/<tool>-<case>.log, then stops
+│   │                         #   rule/skill directories) — ALL FOUR served skill files
+│   │                         #   (SKILL.md + apply.md/translate.md/advanced.md, mirroring
+│   │                         #   cli/src/skills.ts's real installer), publishes the LOCAL cli/
+│   │                         #   build to the gate's Verdaccio and points the scratch repo's npm
+│   │                         #   resolution at it (see "Layer B tests the branch under test"
+│   │                         #   below), writes a real `.pointer/config.json` +
+│   │                         #   `.pointer/credentials.env` (mirroring what `pointer init` itself
+│   │                         #   writes, not read from source), git init+commit, runs the CLI
+│   │                         #   non-interactively with exactly ONE prompt, captures the full
+│   │                         #   session transcript to e2e/state/transcripts/<tool>-<case>.log,
+│   │                         #   then stops
+│   ├── dry-run-verify.mjs    # verifies the above with NO paid AI tool invoked — see "Layer B
+│   │                         #   tests the branch under test" below
 │   ├── cases/                # one prompt per case (TC1, TC2, TC3, TC4, TC5, TC6)
 │   └── score.mjs             # combines audit.mjs's server state + git diff + literal
 │                             #   keyword/regex checks against the transcript/Reply text — see
@@ -237,6 +246,81 @@ e2e/
 │                             #   → report
 └── state/                    # gitignored: tokens, expected.json, transcripts, report.md
 ```
+
+### Layer B tests the branch under test
+
+A real gate run (`E2E_GATE_WITH_AI=1 scripts/local-e2e-gate.sh`) once showed Layer B silently
+testing something other than the branch under test. Three independent bugs, all in the harness
+itself (never in `cli/` or the API), fixed together:
+
+1. **The server's minimum-CLI-version gate (`Cli__MinVersion`, default `0.1.0` —
+   `API/appsettings.json`'s `Cli.MinVersion`) could still be raised to `99.0.0` when the `ai` phase
+   started.** It is env/config-backed: `e2e/scripts/restart-api.mjs`'s `restartApi({ env })` writes
+   a docker-compose override file and force-recreates the `api` container; `e2e/cli/doctor.spec.mjs`
+   (R1-04-04) and `e2e/cli/registry.spec.mjs` (R1-04-06) both raise it temporarily and restore it in
+   a `finally`/teardown block. A run that dies before that teardown (killed process, phase timeout)
+   skips the restore, and a plain DB `reset.sh` does **not** clear it — it is container
+   config, not database state. Fixed at the actual source, defensively: `e2e/ai/run-cases.mjs` now
+   calls `restartApi()` (no override — restores the compose-computed default) once at the start of
+   `main()`, before any case runs, and again inside `resetAndReseed()` (the TC3/TC6 per-repetition
+   reset path), so the `ai` phase is self-healing regardless of which earlier phase left the gate
+   raised.
+2. **The AI tool ran the PUBLISHED `pointer-feedback` CLI from npmjs (`npx pointer-feedback@latest`),
+   never the branch's own `cli/` build** — so `cli/src/apply/prompt.ts`'s prompt text (including the
+   AI-rules-precedence rewrite TC6 exists to test) was never actually exercised. Fixed by publishing
+   the branch's own `cli/` build to the gate's Verdaccio registry (the same registry
+   `e2e/cli/registry.spec.mjs` already uses, proxying everything else to the real npmjs — see
+   `e2e/verdaccio/config.yaml`) and pointing the AI tool's own process at it via the
+   `npm_config_registry` env var (`harness.mjs`'s `npmRegistryEnv`), so a bare `npx -y
+   pointer-feedback@latest` — exactly what the served skill tells the AI tool to run, with no
+   `--registry` of its own — resolves to that build. A scratch `.npmrc` (`registry=<verdaccio-url>/`)
+   is also written into every scratch repo, but is **not** what the harness itself relies on: npm
+   only honours a project `.npmrc` from the directory it resolves as the "local prefix" — the
+   nearest ancestor with a `package.json` — and none of `fixture-app/{alpha,beta,tc6}` has one of
+   its own, so npm's prefix search walks up past the scratch dir to `e2e/package.json` and reads
+   (the nonexistent) `e2e/.npmrc` instead, silently ignoring the scratch one. Confirmed directly:
+   `npm config get registry` from inside a scratch copy still reported `registry.npmjs.org` with
+   only the `.npmrc` in place; the env var has no such directory-walk ambiguity and is what actually
+   redirects resolution. Publishing happens once per `run-cases.mjs` invocation (`harness.mjs`'s
+   `publishLocalCli()`, memoized): `npm
+   pack` the current `cli/` source at its real `package.json` version (no version override/rebuild,
+   unlike `registry.spec.mjs`'s deliberately-fake old/new versions — this must BE the real branch
+   build), then `publishTarball` (unpublish-if-present, then publish) via the same
+   `e2e/scripts/lib/registry.mjs` helper `registry.spec.mjs` uses. Because the `ai` phase runs after
+   `registry`/`upgrade`/`429`, this publish always lands last and so is always what `@latest`
+   resolves to. `cli/` must already be built (`cd cli && npm run build`) before the `ai` phase runs —
+   true for the gate script and for CI's `--nightly` tier alike.
+3. **Only `SKILL.md` was installed, never its three siblings** (`apply.md`, `translate.md`,
+   `advanced.md`, served at `/skills/apply.md` etc.) that a real install writes as siblings in the
+   same folder (`cli/src/skills.ts`'s `installSkills`/`SUB_SKILLS`) — `skill.md`'s own "read
+   apply.md for the apply workflow" references, and the untrusted-content/security rules TC3's
+   injection-refusal criterion depends on, were never actually installed. `harness.mjs`'s
+   `installSkills` now fetches and writes all four files, matching the real installer's folder
+   layout.
+4. **The scratch repo was missing `.pointer/config.json` entirely**, and `.pointer/credentials.env`
+   held `POINTER_EMAIL`/`POINTER_PASSWORD` — two env vars `cli/src/auth.ts` and
+   `cli/src/credentials.ts` never read at all (the CLI only ever resolves an API key: env
+   `POINTER_API_KEY` → repo `credentials.env` → the global per-machine store). Without a configured
+   `server`/`project`, `cli/src/commands/apply.ts` falls back to the CLI's baked-in production
+   default server with no project resolvable — nothing like a real user's repo. `harness.mjs` now
+   fetches the Developer automation account's real API key (`POST /api/auth/login` +
+   `GET /api/me/api-key`, same pattern `e2e/cli/registry.spec.mjs`'s `getDeveloperApiKey` uses, with
+   `forceFresh: true` since TC3/TC6 reset+reseed can invalidate a cached login) and writes
+   `.pointer/credentials.env` (`POINTER_API_KEY`/`POINTER_SERVER`/`POINTER_PROJECT`) and
+   `.pointer/config.json` (`server`/`project`/`aiTool`/`cliVersion`/`delivery`) matching exactly
+   what `cli/src/config.ts`'s `writeCredentials`/`writeConfig` and `cli/src/commands/init.ts`'s
+   `configPatch` write for a real single-project, embed-delivery install.
+
+Verified without any paid AI tool via `e2e/ai/dry-run-verify.mjs`: it stands up its own isolated
+compose project (alternate ports, its own project name — never touches the shared dev stack or a
+concurrently-running gate stack), resets+seeds it, builds the scratch TC6 repo exactly as
+`harness.mjs`'s `runCase()` would (skills, `.npmrc`, credentials, config), then runs
+`npx -y pointer-feedback@latest --version` and `npx pointer-feedback apply --plan` from it, and
+tears the stack down unconditionally afterward. It asserts: the resolved version is the local
+build's (`cli/package.json`'s version, not whatever is on npmjs), `--plan` exits 0 and its stdout
+contains the branch's `AI_RULES_PRECEDENCE_TEXT` marker text, all four skill files exist under
+`.claude/skills/`, and `GET /api/comments/<tc6 id>` returns both seeded `aiRules` (project +
+personal). Run it with `node e2e/ai/dry-run-verify.mjs`.
 
 **Why the widget path is fully decoupled from the AI-facing ground truth**: an earlier draft had
 `seed.mjs` and a Playwright spec both creating C1-C8 against the same project, which — combined
