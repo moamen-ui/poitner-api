@@ -1,9 +1,11 @@
-// Post-AI-run scoring: reads server-side status/appliedAt/AppliedByLabel/Reply state only — zero
-// AI, zero free-text prose-quality judgment. Scoring discipline per docs/E2E_TEST_PLAN.md: every
-// criterion here is a literal status/timestamp/keyword check, never subjective.
+// Post-AI-run scoring: reads server-side status/appliedAt/AppliedByLabel/Reply state (and, for
+// TC6 only, the scratch repo's own `git diff`) — zero AI, zero free-text prose-quality judgment.
+// Scoring discipline per docs/E2E_TEST_PLAN.md: every criterion here is a literal status/
+// timestamp/keyword/regex check, never subjective.
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { get, login } from './lib/api.mjs';
 import { PROJECTS, USERS } from './lib/constants.mjs';
 
@@ -65,6 +67,101 @@ export async function scoreTc3Run(label) {
   return criteria;
 }
 
+// TC6 ("AI-rule precedence") scorer. Unlike TC3/TC1-5, TC6 needs the SCRATCH REPO's git diff (to
+// judge which AI rule the agent actually followed) and the raw stdout (to detect a stall) —
+// neither is server state, so both are passed in from harness.mjs's runCase() result rather than
+// re-derived here. Server state (comment status/replies) still comes from a real API call, same
+// discipline as scoreTc3Run/scoreListCase: no criterion here is a subjective prose judgment.
+const HEX_COLOR_RE = /#[0-9a-fA-F]{3,8}\b/;
+const CSS_VAR_RE = /var\(\s*--/;
+
+// Only lines the AGENT ADDED count for the colour check — pre-existing hex values already sitting
+// in tokens.css/style.css (the fixture's baseline, e.g. tokens.css's own `--brand: #2952e3`) must
+// never fail this just because the fixture happens to contain them untouched.
+function addedLines(diff) {
+  return diff
+    .split('\n')
+    .filter((l) => l.startsWith('+') && !l.startsWith('+++'))
+    .join('\n');
+}
+
+function looksLikeStall(answerText) {
+  const trimmed = (answerText || '').trim();
+  if (!trimmed) return true; // no final answer at all is itself a stall
+
+  const lines = trimmed.split('\n').filter((l) => l.trim().length > 0);
+  const lastLine = lines[lines.length - 1] || '';
+  const endsWithQuestion = /\?\s*$/.test(lastLine.trim());
+
+  // An unchecked checklist item anywhere in the tail of the transcript (e.g. skill.md's own
+  // "Pre-Implementation Verification Checklist" `- [ ]` items, echoed back and left unchecked) is
+  // exactly the failure mode this criterion exists to catch: the agent enumerating what it *would*
+  // verify instead of verifying it and moving on to the edit.
+  const tail = lines.slice(-15);
+  const hasUncheckedChecklistItem = tail.some((l) => /^\s*[-*]\s*\[\s*\]\s*\S/.test(l));
+
+  return endsWithQuestion || hasUncheckedChecklistItem;
+}
+
+export async function scoreTc6Run(label, { diff = '', answerText = '' } = {}) {
+  const dev = await login(USERS.developer.email, USERS.developer.password);
+  const tc6 = expected.tc6;
+
+  // GET /api/comments/{id} — NOT GET /api/admin/projects/{key}/apply-queue. The apply-queue
+  // action carries its own `[Authorize(Policy = Policies.Admin)]` (API/Controllers/Admin/
+  // ProjectsController.cs), and the Developer/automation role has `grantsAdmin: false` — verified
+  // directly against a running stack while building this scorer, that call 403s for `dev`'s own
+  // token. `GET /api/comments/{id}` is only `[Authorize]` (CommentsController.cs), returns the
+  // same `status`/`replies`/`aiRules` shape, and the comment isn't private, so the Developer
+  // account (its own author) can always read it.
+  let comment = null;
+  try {
+    comment = await get(`/api/comments/${tc6.commentId}`, { token: dev.token });
+  } catch {
+    // Comment somehow unreachable (deleted, server error) — `comment` stays null and every
+    // criterion below that depends on it correctly reads as FAIL rather than throwing.
+  }
+
+  const added = addedLines(diff);
+  const touchedButtonRule = /submit-btn/.test(diff);
+  const producedEdit = diff.trim().length > 0;
+
+  // "Could not apply: ..." is markFailed's own reply text (cli/src/apply/mark.ts) — the CLI's one
+  // documented way to record a failure without a status change, so it counts as "processed" the
+  // same way status=3/Applied does.
+  const processedViaCli =
+    !!comment &&
+    (comment.status === 3 || (comment.replies || []).some((r) => /^Could not apply:/.test(r.body || '')));
+
+  const criteria = {
+    // (a) the button change was made
+    buttonChanged: touchedButtonRule && producedEdit,
+    // (b) via the project-tier rule (var(--...)), not a new hard-coded hex
+    workspaceRuleWon: CSS_VAR_RE.test(added) && !HEX_COLOR_RE.test(added),
+    // (c) the comment was marked applied/failed via the CLI
+    commentProcessed: processedViaCli,
+    // (d) no stall: an edit was produced and stdout doesn't trail off into an unanswered
+    // question or an unchecked verification checklist
+    noStall: producedEdit && !looksLikeStall(answerText),
+  };
+
+  const { record } = await import('./lib/report.mjs');
+  const result = Object.values(criteria).every((v) => v === true) ? 'PASS' : 'FAIL';
+  const detail = Object.entries(criteria).map(([k, v]) => `${k}:${v ? 'PASS' : 'FAIL'}`).join(', ');
+
+  record({
+    id: label,
+    tier: 'manual',
+    layer: 'ai',
+    role: 'ai',
+    result,
+    ms: 0,
+    detail,
+  });
+
+  return criteria;
+}
+
 // Generic single-case scorer for TC1/TC2/TC4/TC5 — combines server state with the transcript text
 // the harness captured. `answerText` is the AI tool's own final response, read from the transcript.
 export async function scoreListCase(label, { projectKey, includeIds = [], excludeIds = [], answerText = '' }) {
@@ -95,10 +192,31 @@ export async function scoreListCase(label, { projectKey, includeIds = [], exclud
   return criteria;
 }
 
-// CLI entry: `node audit.mjs tc3 <label>` or `node audit.mjs list <tcId> <label> <project> <transcriptPath>`
+// CLI entry: `node audit.mjs tc3 <label>` | `node audit.mjs tc6 <label> <scratchDir> [transcriptPath]`
+// | `node audit.mjs list <tcId> <label> <project> <transcriptPath>`
 const [, , mode, ...rest] = process.argv;
 if (mode === 'tc3') {
   await scoreTc3Run(rest[0] || 'unlabeled');
+} else if (mode === 'tc6') {
+  const [label, scratchDir, transcriptPath] = rest;
+  if (!scratchDir) {
+    console.error('Usage: node audit.mjs tc6 <label> <scratchDir> [transcriptPath]');
+    process.exit(1);
+  }
+  let diff = '';
+  try {
+    diff = execFileSync('git', ['diff', 'HEAD'], { cwd: scratchDir, encoding: 'utf8' });
+  } catch {
+    // no commits yet / invoke() failed before any edit — diff stays empty, same as harness.mjs
+  }
+  let answerText = '';
+  if (transcriptPath) {
+    const transcript = readFileSync(transcriptPath, 'utf8');
+    const marker = '\n\nRESPONSE:\n';
+    const idx = transcript.indexOf(marker);
+    answerText = idx >= 0 ? transcript.slice(idx + marker.length) : transcript;
+  }
+  await scoreTc6Run(label || 'unlabeled', { diff, answerText });
 } else if (mode === 'list') {
   const [tcId, label, projectKey, transcriptPath] = rest;
   const ea = expected.expectedAnswers[tcId] || {};
@@ -110,6 +228,6 @@ if (mode === 'tc3') {
     answerText,
   });
 } else if (mode) {
-  console.error('Usage: node audit.mjs <tc3 <label> | list <tcId> <label> <project> <transcriptPath>>');
+  console.error('Usage: node audit.mjs <tc3 <label> | tc6 <label> <scratchDir> [transcriptPath] | list <tcId> <label> <project> <transcriptPath>>');
   process.exit(1);
 }

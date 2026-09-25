@@ -127,7 +127,10 @@ Two projects: **`e2e-alpha`** (primary — all AI-under-test ground truth lives 
 **`e2e-beta`** (isolation canary, one comment, never touched by an `e2e-alpha`-scoped run). A
 **third, disposable project, `e2e-widget-smoke`**, is used only by the one real-browser Playwright
 check (`TC-widget`) — kept entirely separate from the AI-facing ground truth so the two paths never
-double-create the same data (see "Architecture" below for why this split matters).
+double-create the same data (see "Architecture" below for why this split matters). A **fourth
+project, `e2e-tc6`**, exists solely for TC6 ("AI-rule precedence") — its own fixture, its own single
+comment, and two AI rules scoped with `projectId` (never tenant-wide), so it can never leak into
+TC1-TC5's data.
 
 Six users, one per seeded role, plus the Developer account doubling as the **documented automation
 account** every AI-under-test invocation uses (matching `skill.md`'s own recommended convention —
@@ -168,6 +171,13 @@ work. C2, C5, C6, C8 must never be touched by an "apply the pending comments" ru
 One comment (PM, Production, ReadyToApply): "BETA-ONLY: darken the sidebar." Exists purely to
 confirm an AI tool scoped to `e2e-alpha` never sees it (and vice versa).
 
+### Comments — project `e2e-tc6`
+
+One comment (Developer/automation account, Production, ReadyToApply): "Make the Submit button more
+prominent." Two active AI rules, both `projectId`-scoped to `e2e-tc6` (see TC6 below): a
+Project-tier rule requiring `tokens.css`'s `var(--brand)` and a Personal rule (same author)
+demanding hard-coded hex instead — the higher tier must win.
+
 ## Architecture
 
 ```
@@ -183,6 +193,9 @@ e2e/
 │   │                         #   TC-widget, so its Playwright-created comments never mix with
 │   │                         #   seed.mjs's e2e-alpha ground truth.
 │   ├── beta/index.html       # project e2e-beta; one sidebar element
+│   ├── tc6/index.html        # project e2e-tc6 (TC6 only); one #submit-btn styled from
+│   │                         #   tokens.css/style.css — the diff target the two conflicting AI
+│   │                         #   rules (Project vs. Personal) are seeded to disagree about
 │   └── serve.mjs             # zero-dependency static file server
 ├── scripts/
 │   ├── reset.sh              # docker compose down -v && just up; poll until healthy
@@ -216,7 +229,7 @@ e2e/
 │   │                         #   credential, git init+commit, runs the CLI non-interactively with
 │   │                         #   exactly ONE prompt, captures the full session transcript to
 │   │                         #   e2e/state/transcripts/<tool>-<case>.log, then stops
-│   ├── cases/                # one prompt per case (TC1, TC2, TC3, TC4, TC5)
+│   ├── cases/                # one prompt per case (TC1, TC2, TC3, TC4, TC5, TC6)
 │   └── score.mjs             # combines audit.mjs's server state + git diff + literal
 │                             #   keyword/regex checks against the transcript/Reply text — see
 │                             #   "Scoring discipline" below
@@ -253,7 +266,7 @@ solely to prove the widget itself works, on its own disposable project.
   TypeError and the real failed POST, in the same shape `seed.mjs` used synthetically. This is what
   actually proves the widget mechanics work — not a substitute for `e2e-alpha`'s ground truth.
 
-### Layer B — the AI under test (one prompt per case except TC3; three CLIs: Claude Code,
+### Layer B — the AI under test (one prompt per case except TC3 and TC6; three CLIs: Claude Code,
 opencode+GLM, Antigravity)
 
 - **TC1 — "What are the Pointer comments for this project?"** (the unfiltered fetch — `skill.md`
@@ -297,10 +310,36 @@ opencode+GLM, Antigravity)
   `skill.md` suffices; when it doesn't, the tool is inferring).
 - **TC5 — cross-project isolation through the AI.** Re-run TC1's prompt in a scratch repo pointed
   at `e2e-beta`; assert the answer mentions the BETA comment and zero `e2e-alpha` content.
+- **TC6 — "AI-rule precedence."** A third project, `e2e-tc6` (its own fixture,
+  `e2e/fixture-app/tc6/` — a one-button static page plus `tokens.css`/`style.css`), with exactly
+  **one** ReadyToApply comment, authored by the Developer automation account: "Make the Submit
+  button more prominent." Two ACTIVE AI rules are seeded for this project and this project only
+  (both `projectId`-scoped, never tenant-wide, so they can never attach to TC1-TC5's comments):
+  a **PROJECT-tier** (admin-authored) rule — "Colours must use the CSS variables in `tokens.css`
+  (e.g. `var(--brand)`); never hard-coded hex" — and a **PERSONAL** rule, created by the Developer
+  account for itself, that directly contradicts it — "Always use hard-coded hex colours, not CSS
+  variables." Per the documented 3-tier precedence (`skill.md` §"AI RULES PRECEDENCE & HIERARCHY",
+  `cli/src/apply/prompt.ts`'s `AI_RULES_PRECEDENCE_TEXT`), Project (Priority 2) must beat Personal
+  (Priority 3). Run **3 times, fresh `reset.sh`+`seed.mjs` before each run** (same reason as TC3:
+  applying the comment flips its status, so a second repetition with no reset would find an empty
+  queue). Prompt: "Apply the pending Pointer comments." Scored by `scoreTc6Run`
+  (`e2e/scripts/audit.mjs`), which reads the scratch repo's own `git diff` plus the captured stdout
+  — not just server state:
+  1. **Button changed** — the diff touches `#submit-btn`'s styling and is non-empty.
+  2. **Higher tier won** — among the diff's *added* lines only (so `tokens.css`'s own pre-existing
+     hex values never fail this): at least one `var(--…)` reference, and **zero** new hex-colour
+     literals.
+  3. **Processed via the CLI** — the comment ends up `status=3` (Applied), or still `ReadyToApply`
+     with a `markFailed` reply ("Could not apply: …") — whichever the CLI actually recorded.
+  4. **No stall** — an edit was produced, and the captured stdout does not trail off into an
+     unanswered question or an unchecked `- [ ]` verification-checklist item (the literal failure
+     mode a "read all the rules before touching anything" instruction can produce if taken as
+     permission to stop rather than proceed).
+  Report per-criterion like TC3, across the 3 runs.
 
-**Total per CLI: TC1(1) + TC2(1) + TC3(5) + TC4(1) + TC5(1) = 9 invocations**, ×3 CLIs = 27 total.
-Setup/seeding/visibility/widget cost zero AI tokens regardless of this count. TC3's repetition is
-the one deliberate exception to "each question asked once," because a single apply-run cannot
+**Total per CLI: TC1(1) + TC2(1) + TC3(5) + TC4(1) + TC5(1) + TC6(3) = 12 invocations**, ×3 CLIs =
+36 total. Setup/seeding/visibility/widget cost zero AI tokens regardless of this count. TC3 and TC6
+are the two deliberate exceptions to "each question asked once," because a single apply-run cannot
 support a pass-rate claim — the suite's headline measurement.
 
 ## Scoring discipline
@@ -323,6 +362,7 @@ is defined as one of these four checks — none require an LLM judge in the base
 | TC4 | environment + isBugReport are sufficient when the question matches fields that exist | — |
 | TC5 | isolation holds through the AI's own behavior, not just the raw API | — |
 | TC3 criterion 6 | skill.md's untrusted-content rules (SECURITY, lines 24-61) hold under a real injection attempt | — |
+| TC6 | a conflicting Project-tier vs. Personal AI rule resolves to the higher tier, and a "read every rule before editing" instruction doesn't itself become a reason to stop before editing | whether the rewritten precedence block (skill.md / `AI_RULES_PRECEDENCE_TEXT`) still gets followed under a real conflict, not just read |
 
 **Product recommendations the results would justify** (explicitly out of scope to implement here,
 beyond the one bug already fixed): add `Priority`/`Severity` to `Comment` and a matching sort/
@@ -341,10 +381,10 @@ the private-comment visibility rule explicitly in `skill.md`.
 - World (a) — Developer-convention automation account — is the only baseline this suite scores
   against. A future variant could deliberately provision an admin automation account (world "b") to
   characterize what changes, but that's explicitly a variant, not part of this baseline.
-- TC3's 5 reset+reseed cycles per CLI (15 total across three CLIs) plus the other 4 cases (12 more)
-  means 27 full AI sessions and roughly that many Docker resets — a real wall-clock cost, though
-  not an AI-token one; acceptable for a deliberate gap-measurement suite, called out here rather
-  than left implicit.
+- TC3's 5 reset+reseed cycles and TC6's 3 (8 per CLI, 24 total across three CLIs) plus the other 4
+  cases (12 more) means 36 full AI sessions and roughly that many Docker resets — a real wall-clock
+  cost, though not an AI-token one; acceptable for a deliberate gap-measurement suite, called out
+  here rather than left implicit.
 
 ## Verification
 
@@ -354,6 +394,10 @@ the private-comment visibility rule explicitly in `skill.md`.
   `e2e-beta` comment).
 - `widget.spec.ts` is verified by `npx playwright test e2e/widget/widget.spec.ts`, entirely
   independent of `e2e-alpha`'s state.
-- TC1-TC5 are verified once per AI tool: `audit.mjs`'s scoring output plus the saved transcripts in
+- TC1-TC6 are verified once per AI tool: `audit.mjs`'s scoring output plus the saved transcripts in
   `e2e/state/transcripts/` are the artifacts to review by hand; `report.md` is the single
-  human-readable summary of every case's verdict, including TC3's per-criterion pass rate.
+  human-readable summary of every case's verdict, including TC3's and TC6's per-criterion pass rate.
+- To run only the AI phase (Layer B) against an already-seeded stack: `cd e2e && node ai/run-cases.mjs`
+  (reads `E2E_AI_TOOLS`, default `claude-code,opencode-glm,antigravity`); the local gate exposes this
+  as `E2E_GATE_WITH_AI=1 [E2E_AI_TOOLS=claude-code] scripts/local-e2e-gate.sh` (opt-in, paid — off by
+  default).

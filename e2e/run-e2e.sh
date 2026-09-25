@@ -82,8 +82,14 @@ elif [ "$TIER" = "nightly" ]; then
 elif [ ${#FLAGS[@]} -eq 0 ] && [ ${#ONLY[@]} -eq 0 ]; then
   # Default behavior
   FLAGS+=("reset" "seed" "probe" "widget")
-  [ "$WITH_AI" = "1" ] && FLAGS+=("ai")
 fi
+
+# --with-ai is orthogonal to tier — it used to only take effect on the untiered default branch
+# above (its check lived inside that `elif`), so `run-e2e.sh --nightly --with-ai` silently ran
+# without the ai phase at all. Checked once, after tier resolution, so it appends regardless of
+# which branch above ran. scripts/local-e2e-gate.sh's E2E_GATE_WITH_AI=1 relies on this working
+# together with --nightly.
+[ "$WITH_AI" = "1" ] && FLAGS+=("ai")
 
 if [ "$LIST" = "1" ]; then
   # `set -u` is on, and FLAGS is legitimately empty for a bare `--only` run (no phases, just

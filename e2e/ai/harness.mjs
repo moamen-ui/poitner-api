@@ -80,7 +80,7 @@ function installCredentials(scratchDir) {
 
 /**
  * @param {string} toolKey one of 'claude-code' | 'opencode-glm' | 'antigravity'
- * @param {'alpha'|'beta'} fixture which fixture-app copy to use as the target repo
+ * @param {'alpha'|'beta'|'tc6'} fixture which fixture-app copy to use as the target repo
  * @param {string} prompt the single natural-language prompt to run
  * @param {string} runLabel unique label for this run, e.g. 'tc3-run-3'
  * @returns {{ scratchDir: string, transcriptPath: string, diff: string, answerText: string }}

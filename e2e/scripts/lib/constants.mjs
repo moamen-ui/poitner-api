@@ -59,6 +59,11 @@ export const PROJECTS = {
   beta: { key: 'e2e-beta', name: 'E2E Beta', appUrl: 'https://e2e-beta.example.test' },
   // Tenant B's project — the target of cross-tenant reads that must fail.
   gamma: { key: 'e2e-gamma', name: 'E2E Gamma', appUrl: 'https://e2e-gamma.example.test' },
+  // TC6 (AI-rule precedence) — its own project, own fixture app, own single comment. Kept
+  // entirely separate from e2e-alpha/e2e-beta so the project- and personal-tier AI rules seeded
+  // for it (see seed.mjs) never attach to TC1-TC5's comments (both rule tiers are scoped with
+  // `ProjectId = this project's id`, never tenant-wide).
+  tc6: { key: 'e2e-tc6', name: 'E2E TC6 Precedence', appUrl: 'https://e2e-tc6.example.test' },
 };
 
 // Single source of truth for every port the suite binds. Fixture servers, Playwright baseURL and
