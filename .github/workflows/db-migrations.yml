@@ -53,6 +53,10 @@ jobs:
           [ "$files" = "$rows" ]
       - name: Newest migration Down/Up round-trip (DB-RULES R5)
         run: |
+          # DB-11f B-2's Down() refuses (RAISE) when no least-privilege global role exists to refill
+          # users.role_id — true on this empty, unseeded DB but never in a real environment (seeded
+          # Developer/PM/Tester). Seed one here rather than weaken the guard (the migration is deployed; R10).
+          PGPASSWORD=pointer psql -h localhost -U pointer -d pointer -v ON_ERROR_STOP=1 -c "INSERT INTO roles (name, is_super_admin, grants_admin, quick_access, is_active, is_system, created_at, created_by) SELECT 'ci-least-privilege', false, false, false, true, false, now(), '00000000-0000-0000-0000-000000000000' WHERE NOT EXISTS (SELECT 1 FROM roles WHERE owner_id IS NULL AND deleted_at IS NULL AND NOT is_super_admin AND NOT grants_admin AND NOT quick_access);"
           prev=$(ls Infrastructure/Migrations/[0-9]*_*.cs | grep -v '\.Designer\.cs$' | xargs -n1 basename | sed 's/\.cs$//' | sort | tail -2 | head -1)
           echo "down to $prev"; dotnet ef database update "$prev" $EF_ARGS
           echo "up again";      dotnet ef database update $EF_ARGS
