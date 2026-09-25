@@ -65,6 +65,7 @@ async function main() {
     availableTools.push(tool); // availability is discovered on first real invocation, not probed ahead of time
   }
 
+  let casesRun = 0;
   for (const tool of availableTools) {
     console.log(`\n=== Tool: ${tool} ===`);
     let toolFailedOnce = false;
@@ -97,6 +98,7 @@ async function main() {
           break;
         }
 
+        casesRun++;
         if (c.id === 'tc3') {
           const criteria = await scoreTc3Run(`${tool}-${runLabel}`);
           console.log('   ', criteria);
@@ -121,6 +123,12 @@ async function main() {
   }
 
   console.log(`\n==> Layer B complete. See ${reportPath}`);
+  // A run where every tool failed to start measured nothing — report that as a failure, not a pass
+  // (a Verdaccio that was down once made both tools "unavailable" and the phase still went green).
+  if (casesRun === 0) {
+    console.error('Layer B ran zero cases: every AI tool failed to start (see the TOOL UNAVAILABLE entries above).');
+    process.exit(1);
+  }
 }
 
 main().catch((err) => {

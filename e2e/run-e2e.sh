@@ -294,7 +294,18 @@ run_phase "upgrade" "( if [ -n \"\${LEGACY_REF:-}\" ]; then node scripts/upgrade
 run_phase "429" "( E2E_429=1 bash scripts/pw.sh api 'rate-limits\\.spec\\.mjs' && E2E_429=1 bash scripts/pw.sh api 'login-with-invite-429\\.spec\.mjs' )"
 
 if [[ " ${FLAGS[*]:-} " =~ " ai " ]]; then
+  # The AI harness publishes the branch's CLI build to this stack's Verdaccio so `npx pointer-feedback`
+  # resolves to the build under test — the registry phase stops Verdaccio when it finishes, so start it
+  # again here (same compose project/files as the registry phase) and stop it afterwards.
+  AI_COMPOSE_ARGS=()
+  [ -n "${E2E_COMPOSE_PROJECT:-}" ] && AI_COMPOSE_ARGS+=(-p "${E2E_COMPOSE_PROJECT}")
+  if [ -n "${E2E_COMPOSE_FILES:-}" ]; then
+    IFS=':' read -r -a _ai_compose_files <<< "${E2E_COMPOSE_FILES}"
+    for _f in "${_ai_compose_files[@]}"; do AI_COMPOSE_ARGS+=(-f "$_f"); done
+  fi
+  docker compose "${AI_COMPOSE_ARGS[@]}" up -d verdaccio || echo "verdaccio failed to start for the ai phase" >&2
   run_phase "ai" "node ai/run-cases.mjs && node scripts/audit.mjs"
+  docker compose "${AI_COMPOSE_ARGS[@]}" stop verdaccio || true
 else
   node scripts/lib/report.mjs phase "ai" "SKIP" "0s" "Skipped by tier/flags"
 fi
