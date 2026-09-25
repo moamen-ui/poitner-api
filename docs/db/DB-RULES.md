@@ -5,7 +5,8 @@ review ([`DB-REVIEW-2026-09-22.md`](DB-REVIEW-2026-09-22.md)); amended the same 
 cross-reviews (R4, R6, R7, R13 — marked *(amended)*) and again the same evening after the owner
 decisions (R7 marker form, **R7.1 batching**, R8 point 6), and again the same night after the DB-11
 cross-review (R9 expression indexes, R14 normaliser + erase inventory, R16 exact fence + scoped tokens), and again the same night (late) after DB-12–15 (R8 point 8 operator/analytics tables, **R17 append-only tables and the audit obligation**),
-and on 2026-09-23 after the DB-12–15 cross-review (R16 claim parsing, R17 shape-based trigger + operator redaction, **R18 operator content boundary**);
+and on 2026-09-23 after the DB-12–15 cross-review (R16 claim parsing, R17 shape-based trigger + operator redaction, **R18 operator content boundary**),
+and on 2026-09-25 with DB-20 (**R8 point 9 financial ledger tables**, **R20 money**);
 amend, do not fork. Every execution
 doc under [`execution/`](execution/) cites the rule numbers it relies on. `scripts/deploy-api.sh`
 already points here.
@@ -211,6 +212,12 @@ Every new entity that holds customer data:
    `ON DELETE SET NULL`, the row survives as an operator/analytics record with `owner_id = NULL`, and the type is excluded **by name with a comment** in
    `Tests/WorkspaceTests.cs` `HardDeleteOrder_CoversEveryOwnerCarryingEntity`. Such a table never holds content (comment text, prompts, names, addresses) —
    only ids, hashes, counts and whitelisted keys. A new table of this kind cites this point in its mapping comment.
+9. *(added 2026-09-25, DB-20)* **Financial ledger tables survive the workspace too.** `billing_payments` and `discount_redemptions` follow point 8's
+   shape (points 1–4 hold; `owner_id` FK `ON DELETE SET NULL`; excluded from `HardDeleteOrder` by name with a comment in `OperatorTableExclusions`; never
+   swept — retention is forever unless an owner-decided execution doc says otherwise) because bookkeeping must outlive the tenant. They differ from point 8
+   in one way: they may carry **operator-authored, length-capped free text** (`note` ≤ 500, `reference` ≤ 128, `comp_reason` ≤ 200) — never
+   customer-authored content, never a person's e-mail or name (the dashboard says so beside each field). Every `*_by` column is a `public_id` content
+   reference (R14). Workspace-facing reads omit the operator's identity and note (R17 redaction). A payments ledger is append-only at the three R17 layers.
 
 ## R9. Soft delete and uniqueness
 
@@ -466,3 +473,15 @@ why it is safe to run against a frozen workspace. Consequences:
   preview path and the reminder job hit exactly this before the fix). A PR touching a lifecycle-style
   anonymous or job method greps its own diff for `.FirstOrDefaultAsync(w =>` and confirms
   `IgnoreQueryFilters()` precedes every one that is not inside an already-tenant-scoped session guard.
+
+## R20. Money *(added 2026-09-25, DB-20)*
+
+- Amounts are C# `decimal` and Postgres `numeric(12,2)` — the `plans.price_monthly` precedent (`PlanMapping.cs:34-36`). Never `float`, `double`, `real`
+  or the Postgres `money` type.
+- A currency is an ISO 4217 alpha-3 code, upper case. New currency columns are `varchar(3)` with `CHECK (<col> ~ '^[A-Z]{3}$')`. `plans.currency`
+  (`varchar(8)`) is legacy: it is validated and upper-cased in code, not narrowed (R1).
+- Every stored amount has its currency **in the same row**; no amount is ever compared or summed across currencies.
+- Arithmetic rounds once, at two decimals, `Math.Round(x, 2, MidpointRounding.AwayFromZero)`, in one shared helper (DB-20 `BillingMath`).
+- A price that was shown to a customer, or that a payment relied on, is **snapshotted** in the row that used it (quote, redemption, payment) and is never
+  recomputed from an editable catalog row (plan, discount code).
+- `plans.price_monthly` is the price **per billing interval** (`landing/index.html:966-975` renders it "/yr" for Yearly plans), whatever its name says.
