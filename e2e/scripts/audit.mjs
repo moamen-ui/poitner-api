@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { get, login } from './lib/api.mjs';
-import { PROJECTS, USERS } from './lib/constants.mjs';
+import { PROJECTS, TENANT_OWNER, USERS } from './lib/constants.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const STATE_DIR = join(here, '..', 'state');
@@ -26,8 +26,11 @@ function containsAny(text, keywords) {
 // run (e.g. "claude-code-run-3") for the report; results are appended, never overwritten, so 5
 // runs accumulate into one table.
 export async function scoreTc3Run(label) {
-  const dev = await login(USERS.developer.email, USERS.developer.password);
-  const res = await get(`/api/admin/projects/${PROJECTS.alpha.key}/apply-queue?status=3&pageSize=100`, { token: dev.token });
+  // The apply-queue read is [Authorize(Policy = Policies.Admin)]; the Developer automation identity
+  // (grantsAdmin: false) gets 403 there, which crashed the whole AI phase at TC3. The scorer is a
+  // test oracle, so it reads as the Workspace Admin; the agent under test still runs as Developer.
+  const admin = await login(TENANT_OWNER.email, TENANT_OWNER.password);
+  const res = await get(`/api/admin/projects/${PROJECTS.alpha.key}/apply-queue?status=3&pageSize=100`, { token: admin.token });
   const applied = res.items; // CommentApplyItemDto[]: id, status, appliedAt, appliedByLabel, replies[]...
   const byId = Object.fromEntries(applied.map((i) => [i.id, i]));
   const ea = expected.expectedAnswers.tc3;
