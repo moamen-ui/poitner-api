@@ -18,6 +18,44 @@ const FIXTURE_DIR = join(here, '..', 'fixture-app');
 const SCRATCH_ROOT = join(here, '..', 'state', 'scratch');
 const CLI_DIR = join(REPO_ROOT, 'cli');
 const CLI_PUBLISH_SCRATCH = join(here, '..', 'state', 'cli-publish-scratch');
+const CLI_CHECK_SCRATCH = join(here, '..', 'state', 'cli-check-scratch');
+
+// A real agent invocation can legitimately take several minutes (multi-step tool use, npx cold
+// installs, etc.) — 10 minutes was tight enough that a slow-but-healthy run could be killed by the
+// harness itself and misreported as the AGENT failing. Configurable so a run against a slower
+// model/network doesn't need a code change. See docs/E2E_TEST_PLAN.md's Layer B notes.
+export const CASE_TIMEOUT_MS =
+  Number(process.env.E2E_AI_CASE_TIMEOUT_MS) > 0 ? Number(process.env.E2E_AI_CASE_TIMEOUT_MS) : 15 * 60 * 1000;
+
+// Real, on-PATH binary each tool key execs — used ONLY to decide "genuinely not installed" (skip
+// every case for this tool up front) vs. "installed but this one invocation errored" (record ERROR
+// for that case/run and keep going). Kept separate from TOOLS' invoke() below so run-cases.mjs can
+// probe availability without spawning a real (paid) agent run.
+const BINARY_BY_TOOL = {
+  'claude-code': 'claude',
+  'opencode-glm': 'opencode',
+  // antigravity has no verified invocation at all yet (see TOOLS.antigravity.invoke below) — no
+  // binary name to probe; isToolBinaryAvailable() below treats it as unavailable directly.
+};
+
+/**
+ * Whether the tool's real CLI binary is even on PATH — the ONLY condition that should skip a
+ * tool's remaining cases outright. A binary that IS on PATH but errors on a given invocation
+ * (bad prompt, model hiccup, transient network) must not be treated the same way — see
+ * run-cases.mjs.
+ */
+export async function isToolBinaryAvailable(toolKey) {
+  const bin = BINARY_BY_TOOL[toolKey];
+  if (!bin) {
+    return { available: false, reason: `${toolKey}: no verified CLI invocation for this tool yet` };
+  }
+  try {
+    await execFileP('which', [bin]);
+    return { available: true };
+  } catch {
+    return { available: false, reason: `'${bin}' not found on PATH` };
+  }
+}
 
 // The served `pointer-feedback` skill is an entry file (`/skill.md`) plus three siblings
 // (`/skills/apply.md`, `/skills/translate.md`, `/skills/advanced.md`) — see cli/src/skills.ts's
@@ -35,11 +73,16 @@ const TOOLS = {
     skillDir: '.claude/skills',
     configAiTool: 'claude-code',
     async invoke(scratchDir, prompt) {
-      const { stdout } = await execFileP(
+      const call = execFileP(
         'claude',
         ['-p', prompt, '--dangerously-skip-permissions', '--output-format', 'text'],
-        { cwd: scratchDir, timeout: 10 * 60 * 1000, env: { ...process.env, ...npmRegistryEnv() } },
+        { cwd: scratchDir, timeout: CASE_TIMEOUT_MS, env: { ...process.env, ...npmRegistryEnv() } },
       );
+      // Close stdin immediately: left open (execFile's default), `claude -p` waits briefly for
+      // piped input that will never come and logs "no stdin data received in 3s" every run. This
+      // harness only ever runs ONE prompt via the `-p` argument — there is never any stdin to send.
+      call.child.stdin.end();
+      const { stdout } = await call;
       return stdout;
     },
   },
@@ -50,11 +93,14 @@ const TOOLS = {
     skillDir: '.claude/skills',
     configAiTool: 'other',
     async invoke(scratchDir, prompt) {
-      const { stdout } = await execFileP(
+      const call = execFileP(
         'opencode',
         ['run', '-m', 'zai-coding-plan/glm-5.2', '--dir', scratchDir, prompt],
-        { cwd: scratchDir, timeout: 10 * 60 * 1000, env: { ...process.env, ...npmRegistryEnv() } },
+        { cwd: scratchDir, timeout: CASE_TIMEOUT_MS, env: { ...process.env, ...npmRegistryEnv() } },
       );
+      // Same reasoning as claude-code's invoke() above — no stdin is ever sent for this harness.
+      call.child.stdin.end();
+      const { stdout } = await call;
       return stdout;
     },
   },
@@ -100,36 +146,68 @@ async function installSkills(scratchDir, skillDir) {
 // the real, published npmjs package. Without this the harness only ever exercised whatever CLI
 // happens to be on npmjs — the branch's own cli/src/apply/prompt.ts changes were never reachable.
 // See docs/E2E_TEST_PLAN.md "Layer B tests the branch under test" for the chosen mechanism.
-let publishLocalCliPromise = null;
-export function publishLocalCli() {
-  if (!publishLocalCliPromise) {
-    publishLocalCliPromise = (async () => {
-      rmSync(CLI_PUBLISH_SCRATCH, { recursive: true, force: true });
-      mkdirSync(CLI_PUBLISH_SCRATCH, { recursive: true });
-      const env = { ...process.env, ...createScratchEnv(CLI_PUBLISH_SCRATCH) };
-
-      // Packs cli/ EXACTLY as it stands (dist/ must already be built — the gate's own
-      // `npm run build` step, or a developer's own `cd cli && npm run build`), at whatever version
-      // cli/package.json currently has. No version override/rebuild (unlike registry.spec.mjs's
-      // deliberately-fake old/new versions) — this is meant to BE the real branch build, byte for
-      // byte, published at its real version.
-      await execFileP('npm', ['pack', '--pack-destination', CLI_PUBLISH_SCRATCH], { cwd: CLI_DIR, env });
-      const tgz = readdirSync(CLI_PUBLISH_SCRATCH).find((f) => f.endsWith('.tgz'));
-      if (!tgz) {
-        throw new Error(
-          `npm pack produced no tarball in ${CLI_PUBLISH_SCRATCH} — is cli/dist/ built? (cd cli && npm run build)`,
-        );
-      }
-      publishTarball(join(CLI_PUBLISH_SCRATCH, tgz), { scratchDir: CLI_PUBLISH_SCRATCH });
-
-      const pkg = JSON.parse(readFileSync(join(CLI_DIR, 'package.json'), 'utf8'));
-      return pkg.version;
-    })().catch((err) => {
-      publishLocalCliPromise = null; // a transient failure must not permanently poison later cases
-      throw err;
-    });
+/**
+ * Whether `<name>@<version>` is actually resolvable right now against THIS run's Verdaccio.
+ * Verdaccio's storage lives in a docker named volume that scripts/reset.sh's `docker compose down
+ * -v` wipes — and run-cases.mjs's resetAndReseed() calls reset.sh before every TC3/TC6 repetition
+ * — so "we already published once this process" is not the same fact as "it is still there now".
+ * Isolated npm config (userconfig/cache under CLI_CHECK_SCRATCH), same as every other npm call in
+ * this file, so this check never reads/writes the developer's real ~/.npmrc.
+ */
+async function isPublishedInRegistry(name, version) {
+  try {
+    mkdirSync(CLI_CHECK_SCRATCH, { recursive: true });
+    const env = { ...process.env, ...createScratchEnv(CLI_CHECK_SCRATCH) };
+    await execFileP('npm', ['view', `${name}@${version}`, 'version', '--registry', REGISTRY_URL], { env });
+    return true;
+  } catch {
+    return false;
   }
-  return publishLocalCliPromise;
+}
+
+async function packAndPublish() {
+  rmSync(CLI_PUBLISH_SCRATCH, { recursive: true, force: true });
+  mkdirSync(CLI_PUBLISH_SCRATCH, { recursive: true });
+  const env = { ...process.env, ...createScratchEnv(CLI_PUBLISH_SCRATCH) };
+
+  // Packs cli/ EXACTLY as it stands (dist/ must already be built — the gate's own
+  // `npm run build` step, or a developer's own `cd cli && npm run build`), at whatever version
+  // cli/package.json currently has. No version override/rebuild (unlike registry.spec.mjs's
+  // deliberately-fake old/new versions) — this is meant to BE the real branch build, byte for
+  // byte, published at its real version.
+  await execFileP('npm', ['pack', '--pack-destination', CLI_PUBLISH_SCRATCH], { cwd: CLI_DIR, env });
+  const tgz = readdirSync(CLI_PUBLISH_SCRATCH).find((f) => f.endsWith('.tgz'));
+  if (!tgz) {
+    throw new Error(
+      `npm pack produced no tarball in ${CLI_PUBLISH_SCRATCH} — is cli/dist/ built? (cd cli && npm run build)`,
+    );
+  }
+  publishTarball(join(CLI_PUBLISH_SCRATCH, tgz), { scratchDir: CLI_PUBLISH_SCRATCH });
+
+  const pkg = JSON.parse(readFileSync(join(CLI_DIR, 'package.json'), 'utf8'));
+  return pkg.version;
+}
+
+// Serializes calls (a plain chained promise, not a one-shot memo): every call RE-VERIFIES the
+// package is actually resolvable in the registry right now, and republishes if it is not — rather
+// than trusting a single "we published once already" flag that goes stale the moment something
+// (TC3/TC6's per-repetition reset+reseed) wipes Verdaccio's storage out from under it. Chained
+// (not parallel) so two near-simultaneous calls can't race two `npm pack`/`npm publish`
+// invocations against the same scratch dir.
+let publishChain = Promise.resolve(null);
+export function publishLocalCli() {
+  const attempt = publishChain.then(async (cachedVersion) => {
+    const pkg = JSON.parse(readFileSync(join(CLI_DIR, 'package.json'), 'utf8'));
+    if (cachedVersion === pkg.version && (await isPublishedInRegistry(pkg.name, pkg.version))) {
+      return cachedVersion; // still there — no need to pack/publish again
+    }
+    return packAndPublish();
+  });
+  // Keep the chain alive even after a failed attempt (a transient failure must not permanently
+  // poison later cases) — the next call starts from a null "cached version", which always fails
+  // the `cachedVersion === pkg.version` check above and forces a real republish attempt.
+  publishChain = attempt.catch(() => null);
+  return attempt;
 }
 
 // Points npm/npx resolution at the gate's Verdaccio (which proxies everything else to the real
@@ -232,7 +310,19 @@ export async function runCase(toolKey, fixture, projectKey, prompt, runLabel) {
     answerText = await tool.invoke(scratchDir, prompt);
   } catch (err) {
     error = err;
-    answerText = `[harness error]\n${err.message}\n${err.stdout || ''}\n${err.stderr || ''}`;
+    // execFile's rejection carries exit code/signal/stdout/stderr directly (verified: a killed-by-
+    // timeout child sets err.signal, e.g. 'SIGTERM', and err.killed; a normal non-zero exit sets
+    // err.code) — before this, only err.message ("Command failed: ...") ever made it into the
+    // transcript, which is nowhere near enough to tell "the agent errored" from "the harness killed
+    // it" from "the binary isn't even there".
+    answerText =
+      `[harness error]\n` +
+      `message: ${err.message}\n` +
+      `exit code: ${err.code ?? 'n/a'}\n` +
+      `signal: ${err.signal ?? 'n/a'}\n` +
+      `killed (timeout or manual kill): ${err.killed ?? false}\n\n` +
+      `--- stdout ---\n${err.stdout || '(empty)'}\n\n` +
+      `--- stderr ---\n${err.stderr || '(empty)'}`;
   }
 
   const transcriptDir = join(here, '..', 'state', 'transcripts');
