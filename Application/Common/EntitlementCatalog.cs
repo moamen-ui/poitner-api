@@ -3,7 +3,11 @@ using Pointer.Domain.ValueObjects;
 
 namespace Pointer.Application.Common;
 
-public enum EntitlementKind { Int, Bool }
+public enum EntitlementKind
+{
+    Int,
+    Bool,
+}
 
 /// <summary>
 /// Metadata for one entitlement key. <see cref="Key"/> matches the <see cref="PlanEntitlements"/>
@@ -16,7 +20,8 @@ public sealed record EntitlementSpec(
     EntitlementKind Kind,
     bool Enforced,
     int DefaultInt,
-    bool DefaultBool);
+    bool DefaultBool
+);
 
 /// <summary>
 /// The single source of truth for entitlement keys, consumed by the plan-write validator, the
@@ -31,18 +36,32 @@ public static class EntitlementCatalog
     public const string MaxCommentsPerMonth = nameof(PlanEntitlements.MaxCommentsPerMonth);
     public const string ExtensionEnabled = nameof(PlanEntitlements.ExtensionEnabled);
     public const string MaxExtensionSites = nameof(PlanEntitlements.MaxExtensionSites);
-    public const string MaxPredefinedActionsPerProject = nameof(PlanEntitlements.MaxPredefinedActionsPerProject);
-    public const string MaxTenantWidePredefinedActions = nameof(PlanEntitlements.MaxTenantWidePredefinedActions);
+    public const string MaxPredefinedActionsPerProject = nameof(
+        PlanEntitlements.MaxPredefinedActionsPerProject
+    );
+    public const string MaxTenantWidePredefinedActions = nameof(
+        PlanEntitlements.MaxTenantWidePredefinedActions
+    );
+
+    // ── DB-19 (WS-NEW): signed-in "+ New workspace" levers ──
+    public const string MaxOwnedWorkspaces = nameof(PlanEntitlements.MaxOwnedWorkspaces);
+    public const string NewWorkspaceRequiresApproval = nameof(
+        PlanEntitlements.NewWorkspaceRequiresApproval
+    );
 
     // ── Display-only key names ──
     public const string RetentionDays = nameof(PlanEntitlements.RetentionDays);
     public const string MaxEnvironments = nameof(PlanEntitlements.MaxEnvironments);
     public const string MaxActiveInvites = nameof(PlanEntitlements.MaxActiveInvites);
     public const string EmailsPerMonth = nameof(PlanEntitlements.EmailsPerMonth);
-    public const string ExtensionCommentsPerMonth = nameof(PlanEntitlements.ExtensionCommentsPerMonth);
+    public const string ExtensionCommentsPerMonth = nameof(
+        PlanEntitlements.ExtensionCommentsPerMonth
+    );
     public const string MaxPendingSuggestions = nameof(PlanEntitlements.MaxPendingSuggestions);
     public const string ExportImportEnabled = nameof(PlanEntitlements.ExportImportEnabled);
-    public const string PromptSuggestionsEnabled = nameof(PlanEntitlements.PromptSuggestionsEnabled);
+    public const string PromptSuggestionsEnabled = nameof(
+        PlanEntitlements.PromptSuggestionsEnabled
+    );
     public const string CustomStatusesEnabled = nameof(PlanEntitlements.CustomStatusesEnabled);
     public const string PrioritySupport = nameof(PlanEntitlements.PrioritySupport);
 
@@ -57,29 +76,48 @@ public static class EntitlementCatalog
     /// <b>Free plan defaults</b> for seeding — the one AppSetting-backed override (emailsPerMonth) is
     /// applied by the seeder.
     /// </summary>
-    public static readonly IReadOnlyDictionary<string, EntitlementSpec> All =
-        new EntitlementSpec[]
-        {
-            // Enforced
-            Int(MaxProjects, "Projects", enforced: true, def: 3),
-            Int(MaxSeats, "Seats", enforced: true, def: 5),
-            Int(MaxCommentsPerMonth, "Comments / month", enforced: true, def: 100),
-            Bool(ExtensionEnabled, "Browser extension", enforced: true, def: false),
-            Int(MaxExtensionSites, "Extension sites", enforced: true, def: 1),
-            Int(MaxPredefinedActionsPerProject, "Predefined actions / project", enforced: true, def: 10),
-            Int(MaxTenantWidePredefinedActions, "Tenant-wide predefined actions", enforced: true, def: 10),
-            // Display-only
-            Int(RetentionDays, "Retention (days)", enforced: false, def: 90),
-            Int(MaxEnvironments, "Environments", enforced: false, def: 3),
-            Int(MaxActiveInvites, "Active invites", enforced: false, def: 5),
-            Int(EmailsPerMonth, "Emails / month", enforced: false, def: 100),
-            Int(ExtensionCommentsPerMonth, "Extension comments / month", enforced: false, def: 100),
-            Int(MaxPendingSuggestions, "Pending suggestions", enforced: false, def: 20),
-            Bool(ExportImportEnabled, "Export / import", enforced: false, def: false),
-            Bool(PromptSuggestionsEnabled, "Prompt suggestions", enforced: false, def: false),
-            Bool(CustomStatusesEnabled, "Custom statuses", enforced: false, def: false),
-            Bool(PrioritySupport, "Priority support", enforced: false, def: false),
-        }.ToDictionary(s => s.Key);
+    public static readonly IReadOnlyDictionary<string, EntitlementSpec> All = new EntitlementSpec[]
+    {
+        // Enforced
+        Int(MaxProjects, "Projects", enforced: true, def: 3),
+        Int(MaxSeats, "Seats", enforced: true, def: 5),
+        Int(MaxCommentsPerMonth, "Comments / month", enforced: true, def: 100),
+        Bool(ExtensionEnabled, "Browser extension", enforced: true, def: false),
+        Int(MaxExtensionSites, "Extension sites", enforced: true, def: 1),
+        Int(
+            MaxPredefinedActionsPerProject,
+            "Predefined actions / project",
+            enforced: true,
+            def: 10
+        ),
+        Int(
+            MaxTenantWidePredefinedActions,
+            "Tenant-wide predefined actions",
+            enforced: true,
+            def: 10
+        ),
+        // DB-19 §3.1 — signed-in new-workspace levers. MaxOwnedWorkspaces: 1 (D19.1),
+        // -1 = unlimited, 0 = endpoint disabled. NewWorkspaceRequiresApproval: true (D19.1) —
+        // note the restrictive-polarity bool (true = MORE restrictive).
+        Int(MaxOwnedWorkspaces, "Owned workspaces", enforced: true, def: 1),
+        Bool(
+            NewWorkspaceRequiresApproval,
+            "New workspaces need approval",
+            enforced: true,
+            def: true
+        ),
+        // Display-only
+        Int(RetentionDays, "Retention (days)", enforced: false, def: 90),
+        Int(MaxEnvironments, "Environments", enforced: false, def: 3),
+        Int(MaxActiveInvites, "Active invites", enforced: false, def: 5),
+        Int(EmailsPerMonth, "Emails / month", enforced: false, def: 100),
+        Int(ExtensionCommentsPerMonth, "Extension comments / month", enforced: false, def: 100),
+        Int(MaxPendingSuggestions, "Pending suggestions", enforced: false, def: 20),
+        Bool(ExportImportEnabled, "Export / import", enforced: false, def: false),
+        Bool(PromptSuggestionsEnabled, "Prompt suggestions", enforced: false, def: false),
+        Bool(CustomStatusesEnabled, "Custom statuses", enforced: false, def: false),
+        Bool(PrioritySupport, "Priority support", enforced: false, def: false),
+    }.ToDictionary(s => s.Key);
 
     public static bool IsKnown(string key) => All.ContainsKey(key);
 
@@ -106,8 +144,10 @@ public static class EntitlementCatalog
 
     private static object? GetProp(PlanEntitlements e, string key)
     {
-        var prop = typeof(PlanEntitlements).GetProperty(key,
-            BindingFlags.Public | BindingFlags.Instance);
+        var prop = typeof(PlanEntitlements).GetProperty(
+            key,
+            BindingFlags.Public | BindingFlags.Instance
+        );
         return prop?.GetValue(e);
     }
 

@@ -54,8 +54,53 @@ public class PlanSeederTests
         public Task SetIntAsync(string key, int value) => Task.CompletedTask;
     }
 
+    /// <summary>
+    /// DB-19: the Legacy workspace-lever backfill step is guarded by an AppSetting — only a
+    /// stateful fake can prove the guard (run once) and the null-key idempotence (never overwrite
+    /// a non-null value).
+    /// </summary>
+    private sealed class StatefulSettings : ISettingsService
+    {
+        public Dictionary<string, string> Store { get; } = new();
+
+        public Task<bool> GetBoolAsync(string key, bool fallback = false) =>
+            Task.FromResult(
+                Store.TryGetValue(key, out var v) && bool.TryParse(v, out var parsed)
+                    ? parsed
+                    : fallback
+            );
+
+        public Task SetBoolAsync(string key, bool value)
+        {
+            Store[key] = value ? "true" : "false";
+            return Task.CompletedTask;
+        }
+
+        public Task<string> GetStringAsync(string key, string fallback = "") =>
+            Task.FromResult(Store.TryGetValue(key, out var v) ? v : fallback);
+
+        public Task SetStringAsync(string key, string value)
+        {
+            Store[key] = value;
+            return Task.CompletedTask;
+        }
+
+        public Task<int> GetIntAsync(string key, int fallback = 0) =>
+            Task.FromResult(
+                Store.TryGetValue(key, out var v) && int.TryParse(v, out var parsed)
+                    ? parsed
+                    : fallback
+            );
+
+        public Task SetIntAsync(string key, int value)
+        {
+            Store[key] = value.ToString();
+            return Task.CompletedTask;
+        }
+    }
+
     // Builds a service provider whose AppDbContext uses a shared in-memory DB name.
-    private static ServiceProvider BuildProvider(string dbName)
+    private static ServiceProvider BuildProvider(string dbName, ISettingsService? settings = null)
     {
         var services = new ServiceCollection();
         services.AddSingleton<ICurrentUser>(new FakeCurrentUser());
@@ -65,7 +110,7 @@ public class PlanSeederTests
             new ConfigurationBuilder().Build()
         ));
         services.AddScoped<IPasswordHasher>(_ => new IdentityHasher());
-        services.AddScoped<ISettingsService>(_ => new FakeSettings());
+        services.AddScoped<ISettingsService>(_ => settings ?? new FakeSettings());
         // Provide operator creds so the seeder proceeds past the super-admin reconcile to the plan step.
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(
@@ -181,6 +226,78 @@ public class PlanSeederTests
             Assert.Equal(99, db.Plans.Single(p => p.Slug == "free").Entitlements.MaxProjects); // preserved
             // Backfill is idempotent: exactly one subscription per tenant.
             Assert.Single(db.Subscriptions.IgnoreQueryFilters());
+        }
+    }
+
+    /// <summary>DB-19 task 7: a freshly seeded Legacy plan is unlimited for the workspace levers too
+    /// (-1 / false — the special case for the restrictive-polarity bool).</summary>
+    [Fact]
+    public async Task Legacy_GetsUnlimitedWorkspaceLevers_OnFirstSeed()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        SeedExistingTenant(dbName);
+
+        await AdminSeeder.SeedAsync(BuildProvider(dbName));
+
+        using var db = Raw(dbName);
+        var legacy = db.Plans.Single(p => p.Slug == "legacy");
+        Assert.Equal(-1, legacy.Entitlements.MaxOwnedWorkspaces);
+        Assert.False(legacy.Entitlements.NewWorkspaceRequiresApproval);
+    }
+
+    /// <summary>
+    /// DB-19 task 7b: the guarded backfill step fills ABSENT keys on a pre-DB-19 Legacy row, sets
+    /// the flag, and never overwrites an operator-edited value even when it re-runs.
+    /// </summary>
+    [Fact]
+    public async Task LegacyWorkspaceLevers_BackfillsOnlyAbsentKeys_NeverOperatorEdits()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        SeedExistingTenant(dbName);
+
+        // A pre-DB-19 Legacy row: old-shape entitlements, both new keys absent.
+        using (var db = Raw(dbName))
+        {
+            db.Plans.Add(
+                new Plan
+                {
+                    Name = "Legacy",
+                    Slug = "legacy",
+                    Entitlements = new PlanEntitlements { MaxProjects = -1, MaxSeats = -1 },
+                }
+            );
+            db.SaveChanges();
+        }
+
+        var settings = new StatefulSettings();
+        await AdminSeeder.SeedAsync(BuildProvider(dbName, settings));
+
+        using (var db = Raw(dbName))
+        {
+            var legacy = db.Plans.Single(p => p.Slug == "legacy");
+            Assert.Equal(-1, legacy.Entitlements.MaxOwnedWorkspaces);
+            Assert.False(legacy.Entitlements.NewWorkspaceRequiresApproval);
+        }
+        Assert.True(settings.Store[ISettingsService.LegacyWorkspaceLeversBackfilled] == "true");
+
+        // Operator edits both levers; a fresh settings store (flag lost) means the step WOULD
+        // re-run — the non-null keys must be preserved.
+        using (var db = Raw(dbName))
+        {
+            var legacy = db.Plans.Single(p => p.Slug == "legacy");
+            legacy.Entitlements.MaxOwnedWorkspaces = 5;
+            legacy.Entitlements.NewWorkspaceRequiresApproval = true;
+            db.Plans.Update(legacy);
+            db.SaveChanges();
+        }
+        var secondRun = new StatefulSettings();
+        await AdminSeeder.SeedAsync(BuildProvider(dbName, secondRun));
+
+        using (var db = Raw(dbName))
+        {
+            var legacy = db.Plans.Single(p => p.Slug == "legacy");
+            Assert.Equal(5, legacy.Entitlements.MaxOwnedWorkspaces);
+            Assert.True(legacy.Entitlements.NewWorkspaceRequiresApproval);
         }
     }
 }

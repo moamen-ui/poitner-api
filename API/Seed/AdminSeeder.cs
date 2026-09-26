@@ -320,6 +320,29 @@ public static class AdminSeeder
             await db.SaveChangesAsync();
         }
 
+        // ── DB-19 task 7b: ONE-TIME Legacy workspace-lever backfill (-1 / false) ──
+        // Runs BEFORE the LegacyBackfillCompleted guard below so it also runs in production,
+        // where that earlier backfill already completed. Idempotent: writes only keys that are
+        // still absent (null), so a later operator edit of either lever is never overwritten.
+        if (
+            !await settings.GetBoolAsync(
+                ISettingsService.LegacyWorkspaceLeversBackfilled,
+                fallback: false
+            )
+        )
+        {
+            if (
+                legacy.Entitlements.MaxOwnedWorkspaces == null
+                || legacy.Entitlements.NewWorkspaceRequiresApproval == null
+            )
+            {
+                legacy.Entitlements.MaxOwnedWorkspaces ??= -1;
+                legacy.Entitlements.NewWorkspaceRequiresApproval ??= false;
+                await db.SaveChangesAsync();
+            }
+            await settings.SetBoolAsync(ISettingsService.LegacyWorkspaceLeversBackfilled, true);
+        }
+
         // ── ONE-TIME backfill of Subscription(Legacy, Active) for PRE-MONETIZATION tenants ──
         // Runs exactly once (guarded by LegacyBackfillCompleted). Without this guard the seeder would
         // re-run every boot and retroactively grant Legacy-unlimited to any NEW subless (Free) signup —
@@ -401,6 +424,10 @@ public static class AdminSeeder
             else
                 prop.SetValue(e, true);
         }
+        // DB-19 §3.1: NewWorkspaceRequiresApproval is the first bool where true is the RESTRICTIVE
+        // value — the generic "unlimited = every bool true" loop above would make Legacy more
+        // restricted, not less. Unlimited means "no approval needed".
+        e.NewWorkspaceRequiresApproval = false; // restrictive-polarity bool (DB-19 §3.1)
         return e;
     }
 }

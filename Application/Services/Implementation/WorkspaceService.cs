@@ -18,7 +18,7 @@ namespace Pointer.Application.Services.Implementation;
 /// </summary>
 public class WorkspaceService : IWorkspaceService
 {
-    private const int MaxNameLength = 120;
+    private const int MaxNameLength = WorkspaceNameRules.MaxLength;
 
     private readonly IUnitOfWork _unitOfWork;
     private readonly ICurrentUser _currentUser;
@@ -81,13 +81,9 @@ public class WorkspaceService : IWorkspaceService
         if (ownerId is not Guid owner)
             return Result<WorkspaceResponse>.Forbidden(MessageKeys.Common.Forbidden);
 
-        var name = (request.Name ?? string.Empty).Trim();
-        if (name.Length == 0)
-            return Result<WorkspaceResponse>.Failure(MessageKeys.Workspace.NameRequired);
-        if (name.Length > MaxNameLength)
-            return Result<WorkspaceResponse>.Failure(MessageKeys.Workspace.NameTooLong);
-        if (name.Any(char.IsControl))
-            return Result<WorkspaceResponse>.Failure(MessageKeys.Workspace.NameInvalid);
+        // DB-19 task 6: the rule lives in WorkspaceNameRules, shared with the new-workspace path.
+        if (WorkspaceNameRules.Validate(request.Name, out var name) is string nameError)
+            return Result<WorkspaceResponse>.Failure(nameError);
 
         // Tracked load through the query filter — same owner predicate as the read, so a super
         // admin (excluded above) or a mismatched tenant can never reach another workspace's row.

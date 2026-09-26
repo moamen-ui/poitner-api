@@ -16,11 +16,16 @@ public class EntitlementService : IEntitlementService
     private readonly ISettingsService _settings;
 
     // Per-request caches (scoped service ⇒ one instance per request).
-    private readonly Dictionary<Guid, (int PlanId, PlanEntitlements Entitlements)> _resolved = new();
+    private readonly Dictionary<Guid, (int PlanId, PlanEntitlements Entitlements)> _resolved =
+        new();
     private int? _freePlanId;
     private bool? _enforcementEnabled;
 
-    public EntitlementService(IUnitOfWork unitOfWork, ICurrentUser currentUser, ISettingsService settings)
+    public EntitlementService(
+        IUnitOfWork unitOfWork,
+        ICurrentUser currentUser,
+        ISettingsService settings
+    )
     {
         _unitOfWork = unitOfWork;
         _currentUser = currentUser;
@@ -33,11 +38,19 @@ public class EntitlementService : IEntitlementService
         return entitlements;
     }
 
+    public async Task<int> GetPlanIdForTenantAsync(Guid tenantId)
+    {
+        var (planId, _) = await ResolveAsync(tenantId);
+        return planId;
+    }
+
     public Task<Result> CheckCountAsync(string key, int currentCount)
     {
         if (CurrentTenantId() is not Guid tenantId)
             return Task.FromResult(
-                _currentUser.IsSuperAdmin ? Result.Success() : Result.Forbidden(MessageKeys.Common.Forbidden)
+                _currentUser.IsSuperAdmin
+                    ? Result.Success()
+                    : Result.Forbidden(MessageKeys.Common.Forbidden)
             );
         return CheckCountAsync(tenantId, key, currentCount);
     }
@@ -55,7 +68,8 @@ public class EntitlementService : IEntitlementService
         if (limit != -1 && currentCount >= limit)
             return Result.LimitReached(
                 MessageKeys.Plan.LimitReached,
-                new PlanLimit(key, currentCount, limit, planId));
+                new PlanLimit(key, currentCount, limit, planId)
+            );
 
         return Result.Success();
     }
@@ -64,7 +78,9 @@ public class EntitlementService : IEntitlementService
     {
         if (CurrentTenantId() is not Guid tenantId)
             return Task.FromResult(
-                _currentUser.IsSuperAdmin ? Result.Success() : Result.Forbidden(MessageKeys.Common.Forbidden)
+                _currentUser.IsSuperAdmin
+                    ? Result.Success()
+                    : Result.Forbidden(MessageKeys.Common.Forbidden)
             );
         return EnforceFlagAsync(tenantId, key);
     }
@@ -79,7 +95,8 @@ public class EntitlementService : IEntitlementService
         if (!enabled)
             return Result.LimitReached(
                 MessageKeys.Plan.ExtensionDisabled,
-                new PlanLimit(key, 0, 0, planId));
+                new PlanLimit(key, 0, 0, planId)
+            );
 
         return Result.Success();
     }
@@ -90,7 +107,10 @@ public class EntitlementService : IEntitlementService
 
     private async Task<bool> EnforcementOnAsync()
     {
-        _enforcementEnabled ??= await _settings.GetBoolAsync(ISettingsService.EnforcementEnabled, fallback: false);
+        _enforcementEnabled ??= await _settings.GetBoolAsync(
+            ISettingsService.EnforcementEnabled,
+            fallback: false
+        );
         return _enforcementEnabled.Value;
     }
 
@@ -101,7 +121,8 @@ public class EntitlementService : IEntitlementService
 
         // Subscription is tenant-scoped; enforcement may run under any caller, so bypass the query
         // filter and match OwnerId explicitly (count/lookup only — never a cross-tenant row read).
-        var planId = await _unitOfWork.Repository<Subscription>()
+        var planId = await _unitOfWork
+            .Repository<Subscription>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -113,16 +134,18 @@ public class EntitlementService : IEntitlementService
         var effectivePlanId = planId ?? await FreePlanIdAsync();
 
         // Plan is filter-free (global catalog) — plain query.
-        var plan = await _unitOfWork.Repository<Plan>()
+        var plan = await _unitOfWork
+            .Repository<Plan>()
             .Query()
             .AsNoTracking()
             .Where(p => p.Id == effectivePlanId && p.DeletedAt == null)
             .Select(p => new { p.Id, p.Entitlements })
             .FirstOrDefaultAsync();
 
-        var result = plan == null
-            ? (effectivePlanId, new PlanEntitlements()) // no plan row ⇒ empty ⇒ everything resolves to catalog defaults
-            : (plan.Id, plan.Entitlements ?? new PlanEntitlements());
+        var result =
+            plan == null
+                ? (effectivePlanId, new PlanEntitlements()) // no plan row ⇒ empty ⇒ everything resolves to catalog defaults
+                : (plan.Id, plan.Entitlements ?? new PlanEntitlements());
 
         _resolved[tenantId] = result;
         return result;
@@ -133,7 +156,8 @@ public class EntitlementService : IEntitlementService
         if (_freePlanId is int id)
             return id;
 
-        var freeId = await _unitOfWork.Repository<Plan>()
+        var freeId = await _unitOfWork
+            .Repository<Plan>()
             .Query()
             .AsNoTracking()
             .Where(p => p.Slug == "free" && p.DeletedAt == null)

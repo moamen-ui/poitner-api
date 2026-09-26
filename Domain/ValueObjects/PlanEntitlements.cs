@@ -11,6 +11,8 @@ namespace Pointer.Domain.ValueObjects;
 /// its catalog default rather than <c>false</c>.
 ///
 /// The property set MUST stay in sync with <c>EntitlementCatalog.All</c>; a unit test asserts this.
+/// Add optional keys only (R12): a stored JSON that lacks a key materialises as <c>null</c> and
+/// resolves to the catalog default — never change the meaning of an existing key; write a new key.
 /// </summary>
 public class PlanEntitlements
 {
@@ -22,6 +24,21 @@ public class PlanEntitlements
     public int? MaxExtensionSites { get; set; }
     public int? MaxPredefinedActionsPerProject { get; set; }
     public int? MaxTenantWidePredefinedActions { get; set; }
+
+    /// <summary>
+    /// Max workspaces the caller may OWN (DB-19 §3.2) before a new one is created; <c>-1</c> =
+    /// unlimited; <c>0</c> = the endpoint is disabled for callers governed by this plan.
+    /// Governed by the plan of the caller's CURRENT workspace; DB-19.
+    /// </summary>
+    public int? MaxOwnedWorkspaces { get; set; }
+
+    /// <summary>
+    /// <c>true</c> ⇒ the new workspace's admin membership is Pending/inactive (the self-signup
+    /// state); <c>false</c> ⇒ Approved/active immediately. Note the restrictive-polarity bool:
+    /// <c>true</c> is the restrictive value (DB-19 §3.1). Governed by the plan of the caller's
+    /// CURRENT workspace; DB-19.
+    /// </summary>
+    public bool? NewWorkspaceRequiresApproval { get; set; }
 
     // ── Display-only (P1) ──
     public int? RetentionDays { get; set; }

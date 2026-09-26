@@ -31,8 +31,11 @@ public sealed class FakeAuditWriter : IAuditWriter
 public sealed class FakeLoginAttemptLimiter : ILoginAttemptLimiter
 {
     public Task<bool> IsLockedAsync(string email) => Task.FromResult(false);
+
     public Task<int> GetRetryAfterSecondsAsync(string email) => Task.FromResult(0);
+
     public Task RecordFailureAsync(string email) => Task.CompletedTask;
+
     public Task ResetAsync(string email) => Task.CompletedTask;
 }
 
@@ -45,6 +48,8 @@ public sealed class PassThroughEntitlements : IEntitlementService
 {
     public Task<PlanEntitlements> GetForTenantAsync(Guid tenantId) =>
         Task.FromResult(new PlanEntitlements());
+
+    public Task<int> GetPlanIdForTenantAsync(Guid tenantId) => Task.FromResult(0);
 
     public Task<Result> CheckCountAsync(string key, int currentCount) =>
         Task.FromResult(Result.Success());

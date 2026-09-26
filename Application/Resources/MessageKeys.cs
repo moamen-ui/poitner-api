@@ -219,6 +219,10 @@ public static class MessageKeys
         public const string NameTooLong = "Workspace name must be 120 characters or fewer.";
         public const string NameInvalid = "Workspace name contains unsupported characters.";
 
+        /// <summary>DB-19: the caller already owns MaxOwnedWorkspaces workspaces (plan lever).</summary>
+        public const string OwnedLimitReached =
+            "You already own the maximum number of workspaces your plan allows.";
+
         // DB-18 — self-service pause and delete.
         public const string Paused =
             "This workspace is paused. It is read-only until an admin resumes it.";

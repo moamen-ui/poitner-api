@@ -29,7 +29,8 @@ public class PlanService : IPlanService
 
     public async Task<Result<List<PlanAdminResponse>>> ListAsync()
     {
-        var plans = await _unitOfWork.Repository<Plan>()
+        var plans = await _unitOfWork
+            .Repository<Plan>()
             .Query()
             .AsNoTracking()
             .Where(p => p.DeletedAt == null)
@@ -37,7 +38,8 @@ public class PlanService : IPlanService
             .ToListAsync();
 
         var planIds = plans.Select(p => p.Id).ToList();
-        var subCounts = await _unitOfWork.Repository<Subscription>()
+        var subCounts = await _unitOfWork
+            .Repository<Subscription>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -48,19 +50,30 @@ public class PlanService : IPlanService
         var countByPlan = subCounts.ToDictionary(x => x.PlanId, x => x.Count);
 
         return Result<List<PlanAdminResponse>>.Success(
-            plans.Select(p => MapAdmin(p, countByPlan.GetValueOrDefault(p.Id, 0))).ToList());
+            plans.Select(p => MapAdmin(p, countByPlan.GetValueOrDefault(p.Id, 0))).ToList()
+        );
     }
 
     public async Task<Result<PlanAdminResponse>> CreateAsync(PlanWriteDto request)
     {
         var slug = request.Slug.Trim().ToLower();
 
-        if (await _unitOfWork.Repository<Plan>().Query().AsNoTracking()
-                .AnyAsync(p => p.DeletedAt == null && p.Slug == slug))
+        if (
+            await _unitOfWork
+                .Repository<Plan>()
+                .Query()
+                .AsNoTracking()
+                .AnyAsync(p => p.DeletedAt == null && p.Slug == slug)
+        )
             return Result<PlanAdminResponse>.Conflict(MessageKeys.Plan.SlugTaken);
 
-        if (await _unitOfWork.Repository<Plan>().Query().AsNoTracking()
-                .AnyAsync(p => p.DeletedAt == null && p.Name == request.Name.Trim()))
+        if (
+            await _unitOfWork
+                .Repository<Plan>()
+                .Query()
+                .AsNoTracking()
+                .AnyAsync(p => p.DeletedAt == null && p.Name == request.Name.Trim())
+        )
             return Result<PlanAdminResponse>.Conflict(MessageKeys.Plan.NameTaken);
 
         var plan = new Plan
@@ -74,7 +87,7 @@ public class PlanService : IPlanService
             IsActive = request.IsActive,
             DisplayState = request.DisplayState,
             FeatureBullets = request.FeatureBullets ?? new(),
-            Entitlements = MapEntitlements(request.Entitlements)
+            Entitlements = MapEntitlements(request.Entitlements),
         };
 
         await _unitOfWork.Repository<Plan>().AddAsync(plan);
@@ -102,11 +115,21 @@ public class PlanService : IPlanService
         var slug = request.Slug.Trim().ToLower();
         var name = request.Name.Trim();
 
-        if (await _unitOfWork.Repository<Plan>().Query().AsNoTracking()
-                .AnyAsync(p => p.DeletedAt == null && p.Id != id && p.Slug == slug))
+        if (
+            await _unitOfWork
+                .Repository<Plan>()
+                .Query()
+                .AsNoTracking()
+                .AnyAsync(p => p.DeletedAt == null && p.Id != id && p.Slug == slug)
+        )
             return Result<PlanAdminResponse>.Conflict(MessageKeys.Plan.SlugTaken);
-        if (await _unitOfWork.Repository<Plan>().Query().AsNoTracking()
-                .AnyAsync(p => p.DeletedAt == null && p.Id != id && p.Name == name))
+        if (
+            await _unitOfWork
+                .Repository<Plan>()
+                .Query()
+                .AsNoTracking()
+                .AnyAsync(p => p.DeletedAt == null && p.Id != id && p.Name == name)
+        )
             return Result<PlanAdminResponse>.Conflict(MessageKeys.Plan.NameTaken);
 
         plan.Name = name;
@@ -171,7 +194,8 @@ public class PlanService : IPlanService
 
     public async Task<Result<List<PlanPublicResponse>>> ListPublicAsync()
     {
-        var plans = await _unitOfWork.Repository<Plan>()
+        var plans = await _unitOfWork
+            .Repository<Plan>()
             .Query()
             .AsNoTracking()
             .Where(p => p.DeletedAt == null && p.DisplayState != PlanDisplayState.Hidden)
@@ -182,7 +206,8 @@ public class PlanService : IPlanService
     }
 
     private async Task<int> ActiveSubCountAsync(int planId) =>
-        await _unitOfWork.Repository<Subscription>()
+        await _unitOfWork
+            .Repository<Subscription>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
@@ -190,73 +215,81 @@ public class PlanService : IPlanService
 
     // ── Mapping ──────────────────────────────────────────────────────────────
 
-    private static PlanEntitlements MapEntitlements(PlanEntitlementsDto d) => new()
-    {
-        MaxProjects = d.MaxProjects,
-        MaxSeats = d.MaxSeats,
-        MaxCommentsPerMonth = d.MaxCommentsPerMonth,
-        ExtensionEnabled = d.ExtensionEnabled,
-        MaxExtensionSites = d.MaxExtensionSites,
-        MaxPredefinedActionsPerProject = d.MaxPredefinedActionsPerProject,
-        MaxTenantWidePredefinedActions = d.MaxTenantWidePredefinedActions,
-        RetentionDays = d.RetentionDays,
-        MaxEnvironments = d.MaxEnvironments,
-        MaxActiveInvites = d.MaxActiveInvites,
-        EmailsPerMonth = d.EmailsPerMonth,
-        ExtensionCommentsPerMonth = d.ExtensionCommentsPerMonth,
-        MaxPendingSuggestions = d.MaxPendingSuggestions,
-        ExportImportEnabled = d.ExportImportEnabled,
-        PromptSuggestionsEnabled = d.PromptSuggestionsEnabled,
-        CustomStatusesEnabled = d.CustomStatusesEnabled,
-        PrioritySupport = d.PrioritySupport
-    };
+    private static PlanEntitlements MapEntitlements(PlanEntitlementsDto d) =>
+        new()
+        {
+            MaxProjects = d.MaxProjects,
+            MaxSeats = d.MaxSeats,
+            MaxCommentsPerMonth = d.MaxCommentsPerMonth,
+            ExtensionEnabled = d.ExtensionEnabled,
+            MaxExtensionSites = d.MaxExtensionSites,
+            MaxPredefinedActionsPerProject = d.MaxPredefinedActionsPerProject,
+            MaxTenantWidePredefinedActions = d.MaxTenantWidePredefinedActions,
+            MaxOwnedWorkspaces = d.MaxOwnedWorkspaces,
+            NewWorkspaceRequiresApproval = d.NewWorkspaceRequiresApproval,
+            RetentionDays = d.RetentionDays,
+            MaxEnvironments = d.MaxEnvironments,
+            MaxActiveInvites = d.MaxActiveInvites,
+            EmailsPerMonth = d.EmailsPerMonth,
+            ExtensionCommentsPerMonth = d.ExtensionCommentsPerMonth,
+            MaxPendingSuggestions = d.MaxPendingSuggestions,
+            ExportImportEnabled = d.ExportImportEnabled,
+            PromptSuggestionsEnabled = d.PromptSuggestionsEnabled,
+            CustomStatusesEnabled = d.CustomStatusesEnabled,
+            PrioritySupport = d.PrioritySupport,
+        };
 
-    private static PlanEntitlementsDto MapEntitlementsDto(PlanEntitlements e) => new()
-    {
-        MaxProjects = e.MaxProjects,
-        MaxSeats = e.MaxSeats,
-        MaxCommentsPerMonth = e.MaxCommentsPerMonth,
-        ExtensionEnabled = e.ExtensionEnabled,
-        MaxExtensionSites = e.MaxExtensionSites,
-        MaxPredefinedActionsPerProject = e.MaxPredefinedActionsPerProject,
-        MaxTenantWidePredefinedActions = e.MaxTenantWidePredefinedActions,
-        RetentionDays = e.RetentionDays,
-        MaxEnvironments = e.MaxEnvironments,
-        MaxActiveInvites = e.MaxActiveInvites,
-        EmailsPerMonth = e.EmailsPerMonth,
-        ExtensionCommentsPerMonth = e.ExtensionCommentsPerMonth,
-        MaxPendingSuggestions = e.MaxPendingSuggestions,
-        ExportImportEnabled = e.ExportImportEnabled,
-        PromptSuggestionsEnabled = e.PromptSuggestionsEnabled,
-        CustomStatusesEnabled = e.CustomStatusesEnabled,
-        PrioritySupport = e.PrioritySupport
-    };
+    private static PlanEntitlementsDto MapEntitlementsDto(PlanEntitlements e) =>
+        new()
+        {
+            MaxProjects = e.MaxProjects,
+            MaxSeats = e.MaxSeats,
+            MaxCommentsPerMonth = e.MaxCommentsPerMonth,
+            ExtensionEnabled = e.ExtensionEnabled,
+            MaxExtensionSites = e.MaxExtensionSites,
+            MaxPredefinedActionsPerProject = e.MaxPredefinedActionsPerProject,
+            MaxTenantWidePredefinedActions = e.MaxTenantWidePredefinedActions,
+            MaxOwnedWorkspaces = e.MaxOwnedWorkspaces,
+            NewWorkspaceRequiresApproval = e.NewWorkspaceRequiresApproval,
+            RetentionDays = e.RetentionDays,
+            MaxEnvironments = e.MaxEnvironments,
+            MaxActiveInvites = e.MaxActiveInvites,
+            EmailsPerMonth = e.EmailsPerMonth,
+            ExtensionCommentsPerMonth = e.ExtensionCommentsPerMonth,
+            MaxPendingSuggestions = e.MaxPendingSuggestions,
+            ExportImportEnabled = e.ExportImportEnabled,
+            PromptSuggestionsEnabled = e.PromptSuggestionsEnabled,
+            CustomStatusesEnabled = e.CustomStatusesEnabled,
+            PrioritySupport = e.PrioritySupport,
+        };
 
-    private static PlanAdminResponse MapAdmin(Plan p, int activeSubs) => new()
-    {
-        Id = p.Id,
-        Name = p.Name,
-        Slug = p.Slug,
-        PriceMonthly = p.PriceMonthly,
-        Currency = p.Currency,
-        Interval = p.Interval,
-        SortOrder = p.SortOrder,
-        IsActive = p.IsActive,
-        DisplayState = p.DisplayState,
-        FeatureBullets = p.FeatureBullets ?? new(),
-        Entitlements = MapEntitlementsDto(p.Entitlements ?? new()),
-        ActiveSubscriptions = activeSubs
-    };
+    private static PlanAdminResponse MapAdmin(Plan p, int activeSubs) =>
+        new()
+        {
+            Id = p.Id,
+            Name = p.Name,
+            Slug = p.Slug,
+            PriceMonthly = p.PriceMonthly,
+            Currency = p.Currency,
+            Interval = p.Interval,
+            SortOrder = p.SortOrder,
+            IsActive = p.IsActive,
+            DisplayState = p.DisplayState,
+            FeatureBullets = p.FeatureBullets ?? new(),
+            Entitlements = MapEntitlementsDto(p.Entitlements ?? new()),
+            ActiveSubscriptions = activeSubs,
+        };
 
-    private static PlanPublicResponse MapPublic(Plan p) => new()
-    {
-        Slug = p.Slug,
-        Name = p.Name,
-        PriceMonthly = p.PriceMonthly,
-        Currency = p.Currency,
-        Interval = p.Interval,
-        FeatureBullets = p.FeatureBullets ?? new(),
-        DisplayState = p.DisplayState,
-        SortOrder = p.SortOrder
-    };
+    private static PlanPublicResponse MapPublic(Plan p) =>
+        new()
+        {
+            Slug = p.Slug,
+            Name = p.Name,
+            PriceMonthly = p.PriceMonthly,
+            Currency = p.Currency,
+            Interval = p.Interval,
+            FeatureBullets = p.FeatureBullets ?? new(),
+            DisplayState = p.DisplayState,
+            SortOrder = p.SortOrder,
+        };
 }

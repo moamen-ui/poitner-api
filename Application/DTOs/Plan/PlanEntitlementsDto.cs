@@ -14,6 +14,12 @@ public class PlanEntitlementsDto
     public int? MaxPredefinedActionsPerProject { get; set; }
     public int? MaxTenantWidePredefinedActions { get; set; }
 
+    /// <summary>DB-19: max workspaces the caller may own; -1 = unlimited, 0 = endpoint disabled.</summary>
+    public int? MaxOwnedWorkspaces { get; set; }
+
+    /// <summary>DB-19: true ⇒ new-workspace admin membership starts Pending/inactive (restrictive polarity).</summary>
+    public bool? NewWorkspaceRequiresApproval { get; set; }
+
     public int? RetentionDays { get; set; }
     public int? MaxEnvironments { get; set; }
     public int? MaxActiveInvites { get; set; }

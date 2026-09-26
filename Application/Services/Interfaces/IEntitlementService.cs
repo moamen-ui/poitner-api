@@ -18,6 +18,10 @@ public interface IEntitlementService
     /// <summary>The tenant's effective entitlements (Subscription→Plan; missing ⇒ Free). Cached per request.</summary>
     Task<PlanEntitlements> GetForTenantAsync(Guid tenantId);
 
+    /// <summary>DB-19 §3.4b: the tenant's effective plan id (Subscription→Plan; missing ⇒ Free's id),
+    /// for the PlanLimit payload of a directly-resolved (not CheckCountAsync) limit hit. Cached per request.</summary>
+    Task<int> GetPlanIdForTenantAsync(Guid tenantId);
+
     /// <summary>
     /// Compare-only count check for the CURRENT caller's tenant. Returns <c>LimitReached</c> when the
     /// key's limit != -1 and <paramref name="currentCount"/> >= limit. Passes when the kill-switch is off.
