@@ -42,6 +42,14 @@ public static class AuditFields
         "with_password",
         // DB-18 (R17 whitelist addition — timestamp only, no personal data).
         "scheduled_for",
+        // DB-20 (R20/R17 whitelist addition — numbers, ids, enum names, timestamps only; never
+        // "code", "label", "note" or "reference", which the doc-comment above forbids).
+        "amount",
+        "currency",
+        "method",
+        "period_end",
+        "payment_id",
+        "discount_code_id",
     };
 
     /// <summary>

@@ -158,6 +158,19 @@ public static class AuditActions
     /// <summary>DB-13: an impersonation session ended (manually or via the expiry sweep).</summary>
     public const string ImpersonationEnded = "impersonation.ended";
 
+    // ── DB-20: billing v1 (manual payments, complimentary plans, discount codes) ────────────
+
+    public const string BillingPlanRequested = "billing.plan_requested";
+    public const string BillingRequestCancelled = "billing.request_cancelled";
+    public const string BillingRequestRejected = "billing.request_rejected";
+    public const string BillingPaymentRecorded = "billing.payment_recorded";
+    public const string BillingPaymentVoided = "billing.payment_voided";
+    public const string BillingCompEnded = "billing.comp_ended";
+    public const string BillingPastDue = "billing.past_due";
+    public const string BillingDowngraded = "billing.downgraded";
+    public const string DiscountCodeCreated = "discount_code.created";
+    public const string DiscountCodeUpdated = "discount_code.updated";
+
     /// <summary>
     /// Every action string above, by reflection. <c>AuditWriter</c> rejects an entry whose action
     /// is not in here.

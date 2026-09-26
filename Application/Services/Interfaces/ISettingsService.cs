@@ -54,6 +54,13 @@ public interface ISettingsService
     public const string TrialDays = "trial_days"; // default 0
     public const string Currency = "currency"; // default "USD"
 
+    // DB-20 billing v1: manual-payment period job.
+    /// <summary>Grace window (days) after a period ends before downgrading to Free. Default 7 (F-B2).</summary>
+    public const string BillingGraceDays = "billing_grace_days";
+
+    /// <summary>Days before period end the renewal-quote reminder e-mail is sent. Default 3.</summary>
+    public const string BillingReminderDays = "billing_reminder_days";
+
     Task<bool> GetBoolAsync(string key, bool fallback = false);
     Task SetBoolAsync(string key, bool value);
 

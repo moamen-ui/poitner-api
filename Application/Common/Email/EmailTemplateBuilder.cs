@@ -870,6 +870,171 @@ public static class EmailTemplateBuilder
         );
     }
 
+    // ── 21-23. Billing v1 (DB-20 §3.6f) ─────────────────────────────────────────────────────
+
+    public static (string Subject, string Html) BillingRenewalReminder(
+        bool isAr,
+        string workspaceName,
+        string productName,
+        string appUrl,
+        string? primaryColor = null,
+        string? logoUrl = null
+    )
+    {
+        var ws = EmailLayout.Html(workspaceName);
+        var brandColor = EmailLayout.NormalizeBrandColor(primaryColor);
+        var app = EmailLayout.Html(appUrl.TrimEnd('/'));
+        var billingUrl = $"{app}/settings/billing";
+        var billingLink = $"<a href=\"{billingUrl}\" style=\"color:{brandColor};\">{billingUrl}</a>";
+
+        if (isAr)
+        {
+            var subjectAr = $"يقترب تجديد اشتراك {workspaceName}";
+            var contentAr =
+                Heading(EmailLayout.Html(subjectAr))
+                + Paragraph(
+                    $"يقترب موعد تجديد خطة مساحة العمل <strong>{ws}</strong>. راجع الفاتورة وسجّل الدفعة من {billingLink}."
+                );
+            return (
+                subjectAr,
+                EmailLayout.Wrap(
+                    contentAr,
+                    productName,
+                    brandColor: primaryColor,
+                    logoUrl: logoUrl,
+                    appUrl: appUrl,
+                    preheader: subjectAr,
+                    lang: "ar"
+                )
+            );
+        }
+
+        var subjectEn = $"{workspaceName}'s plan renews soon";
+        var contentEn =
+            Heading(EmailLayout.Html(subjectEn))
+            + Paragraph(
+                $"The plan for <strong>{ws}</strong> is due for renewal soon. Review the quote and record payment from {billingLink}."
+            );
+        return (
+            subjectEn,
+            EmailLayout.Wrap(
+                contentEn,
+                productName,
+                primaryColor,
+                logoUrl: logoUrl,
+                appUrl: appUrl,
+                preheader: subjectEn
+            )
+        );
+    }
+
+    public static (string Subject, string Html) BillingPastDue(
+        bool isAr,
+        string workspaceName,
+        string productName,
+        string appUrl,
+        string? primaryColor = null,
+        string? logoUrl = null
+    )
+    {
+        var ws = EmailLayout.Html(workspaceName);
+
+        if (isAr)
+        {
+            var subjectAr = $"تأخر سداد اشتراك {workspaceName}";
+            var contentAr =
+                Heading(EmailLayout.Html(subjectAr))
+                + EmailComponents.Callout(
+                    $"لم يُسدَّد اشتراك مساحة العمل <strong>{ws}</strong> في موعده. تُبقى ميزاتك متاحة خلال فترة سماح قصيرة — بعدها سيُخفَّض الاشتراك إلى الخطة المجانية تلقائيًا.",
+                    "#f59e0b",
+                    rtl: true
+                );
+            return (
+                subjectAr,
+                EmailLayout.Wrap(
+                    contentAr,
+                    productName,
+                    brandColor: primaryColor,
+                    logoUrl: logoUrl,
+                    appUrl: appUrl,
+                    preheader: subjectAr,
+                    lang: "ar"
+                )
+            );
+        }
+
+        var subjectEn = $"{workspaceName}'s payment is past due";
+        var contentEn =
+            Heading(EmailLayout.Html(subjectEn))
+            + EmailComponents.Callout(
+                $"The plan for <strong>{ws}</strong> was not paid on time. Your features stay available for a short grace period — after that it will automatically move to the Free plan.",
+                "#f59e0b"
+            );
+        return (
+            subjectEn,
+            EmailLayout.Wrap(
+                contentEn,
+                productName,
+                primaryColor,
+                logoUrl: logoUrl,
+                appUrl: appUrl,
+                preheader: subjectEn
+            )
+        );
+    }
+
+    public static (string Subject, string Html) BillingDowngraded(
+        bool isAr,
+        string workspaceName,
+        string productName,
+        string appUrl,
+        string? primaryColor = null,
+        string? logoUrl = null
+    )
+    {
+        var ws = EmailLayout.Html(workspaceName);
+
+        if (isAr)
+        {
+            var subjectAr = $"انتقلت مساحة العمل {workspaceName} إلى الخطة المجانية";
+            var contentAr =
+                Heading(EmailLayout.Html(subjectAr))
+                + Paragraph(
+                    $"لم يُسدَّد اشتراك مساحة العمل <strong>{ws}</strong> خلال فترة السماح، فانتقلت إلى الخطة المجانية. بياناتك محفوظة — يمكنك ترقية الخطة في أي وقت."
+                );
+            return (
+                subjectAr,
+                EmailLayout.Wrap(
+                    contentAr,
+                    productName,
+                    brandColor: primaryColor,
+                    logoUrl: logoUrl,
+                    appUrl: appUrl,
+                    preheader: subjectAr,
+                    lang: "ar"
+                )
+            );
+        }
+
+        var subjectEn = $"{workspaceName} moved to the Free plan";
+        var contentEn =
+            Heading(EmailLayout.Html(subjectEn))
+            + Paragraph(
+                $"The plan for <strong>{ws}</strong> was not paid within the grace period, so it moved to the Free plan. Your data is kept — you can upgrade again at any time."
+            );
+        return (
+            subjectEn,
+            EmailLayout.Wrap(
+                contentEn,
+                productName,
+                primaryColor,
+                logoUrl: logoUrl,
+                appUrl: appUrl,
+                preheader: subjectEn
+            )
+        );
+    }
+
     // ── Shared fragments ───────────────────────────────────────────────────────────────────
 
     private static string Heading(string text) =>

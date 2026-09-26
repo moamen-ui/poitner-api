@@ -32,4 +32,7 @@ public static class AuditTargets
 
     /// <summary>An anonymous path with no resolved identity (login failure, reset requested).</summary>
     public const string EmailHash = "email_hash";
+
+    /// <summary>DB-20: discount_codes rows (billing rows themselves target <see cref="Workspace"/>).</summary>
+    public const string DiscountCode = "discount_code";
 }
