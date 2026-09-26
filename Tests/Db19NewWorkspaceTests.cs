@@ -872,6 +872,75 @@ public class Db19NewWorkspaceTests
             );
         }
     }
+
+    // ── 11 ────────────────────────────────────────────────────────────────────────────────────
+
+    /// <summary>Review finding #2: a null request must surface as a 400 validation failure
+    /// (NameRequired), never an unhandled NullReferenceException/500.</summary>
+    [Fact]
+    public async Task Create_NullRequest_ReturnsNameRequired_NotThrow()
+    {
+        var db = Guid.NewGuid().ToString();
+        var seeded = SeedCaller(
+            db,
+            new PlanEntitlements { MaxOwnedWorkspaces = 3, NewWorkspaceRequiresApproval = false }
+        );
+
+        using var ctx = Ctx(CallerOn(seeded), db);
+        var result = await Build(ctx, CallerOn(seeded), new FakeAuditWriter())
+            .CreateForCurrentIdentityAsync(null!);
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Workspace.NameRequired, result.Message);
+    }
+
+    /// <summary>Review finding #3: invalid names refused through the service exactly like
+    /// WorkspaceNameRules.Validate on its own (dedicated edge-case matrix in
+    /// WorkspaceNameRulesTests) — never a plan-limit/DB round-trip.</summary>
+    [Theory]
+    [InlineData(null, "NameRequired")]
+    [InlineData("", "NameRequired")]
+    [InlineData("   ", "NameRequired")]
+    [InlineData("\u0007control-char", "NameInvalid")]
+    public async Task Create_InvalidName_ReturnsExpectedFailure(string? name, string expectedKey)
+    {
+        var db = Guid.NewGuid().ToString();
+        var seeded = SeedCaller(
+            db,
+            new PlanEntitlements { MaxOwnedWorkspaces = 3, NewWorkspaceRequiresApproval = false }
+        );
+        var expected = expectedKey switch
+        {
+            "NameRequired" => MessageKeys.Workspace.NameRequired,
+            "NameInvalid" => MessageKeys.Workspace.NameInvalid,
+            _ => throw new ArgumentOutOfRangeException(nameof(expectedKey)),
+        };
+
+        using var ctx = Ctx(CallerOn(seeded), db);
+        var result = await Build(ctx, CallerOn(seeded), new FakeAuditWriter())
+            .CreateForCurrentIdentityAsync(new CreateWorkspaceRequest { Name = name! });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(expected, result.Message);
+    }
+
+    [Fact]
+    public async Task Create_NameTooLong_ReturnsNameTooLong()
+    {
+        var db = Guid.NewGuid().ToString();
+        var seeded = SeedCaller(
+            db,
+            new PlanEntitlements { MaxOwnedWorkspaces = 3, NewWorkspaceRequiresApproval = false }
+        );
+        var tooLong = new string('a', WorkspaceNameRules.MaxLength + 1);
+
+        using var ctx = Ctx(CallerOn(seeded), db);
+        var result = await Build(ctx, CallerOn(seeded), new FakeAuditWriter())
+            .CreateForCurrentIdentityAsync(new CreateWorkspaceRequest { Name = tooLong });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Workspace.NameTooLong, result.Message);
+    }
 }
 
 /// <summary>
