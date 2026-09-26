@@ -167,7 +167,9 @@ export async function applyCommand(
       (typeof parsed['model'] === 'string' ? parsed['model'] : undefined) ||
       process.env.POINTER_AI_MODEL;
 
-    await markApplied(
+    const markStatus = typeof parsed['status'] === 'string' ? parsed['status'] : undefined;
+    const markEnv = typeof parsed['env'] === 'string' ? parsed['env'] : undefined;
+    const marked = await markApplied(
       {
         id: markId,
         reply,
@@ -175,10 +177,14 @@ export async function applyCommand(
         dryRun,
         tool,
         model,
+        filter:
+          markStatus !== undefined || markEnv !== undefined
+            ? { status: markStatus, environment: markEnv }
+            : undefined,
       },
       clientCtx,
     );
-    process.exit(0);
+    process.exit(marked.nothingMatched ? 1 : 0);
   }
 
   // 2. Handling --fail <id>

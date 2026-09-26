@@ -1,7 +1,7 @@
 import { api } from '../api.js';
 import { postEvent } from '../events.js';
 import { isStaged, commitAll, headSha, getRemoteUrl, commitUrlFor, getUserEmail } from './git.js';
-import { fetchQueue } from './queue.js';
+import { fetchQueue, type QueueFilter } from './queue.js';
 import { loadProjectContext } from './context.js';
 import type { ApplyClientContext } from './types.js';
 
@@ -14,10 +14,16 @@ export type MarkAppliedOptions = {
   /** The model id the tool reported running as (e.g. "claude-sonnet-5"), for structured AI
    *  attribution on the reply — see Reply.AiTool/AiModel server-side. */
   model?: string;
+  /** `--mark all` only: the same `--status` / `--env` filter the plan was built with. Omitted →
+   *  the queue default (status Ready). */
+  filter?: QueueFilter;
 };
 
 export type MarkAppliedResult = {
   committed: boolean;
+  /** `--mark all` matched no comment: nothing was committed or marked (the staged changes are
+   *  left untouched) and the caller must exit non-zero. */
+  nothingMatched?: boolean;
   sha?: string;
   commitUrl?: string | null;
   patchedIds: number[];
@@ -56,9 +62,21 @@ export async function markApplied(
   const patchedIds: number[] = [];
 
   if (options.id === 'all') {
-    // Single commit style: fetch all pending comments (status = 2)
-    const pending = await fetchQueue(ctx, { status: 2 });
+    // Single commit style: fetch the comments this run is marking — the same filter the plan used
+    // (default: status Ready). Fetched BEFORE committing so an empty match can refuse cleanly.
+    const pending = await fetchQueue(ctx, options.filter ?? { status: 2 });
     const count = pending.length;
+    if (count === 0) {
+      // Committing here would record the staged diff as "Apply 0 pending … comments" while marking
+      // nothing server-side — the comments stay open and the commit message lies.
+      console.error(
+        'No comments matched --mark all (queue filter: ' +
+          describeFilter(options.filter) +
+          '). Nothing was committed or marked; your staged changes are untouched. ' +
+          'Re-run with the same --status/--env you used for --plan, or mark each comment by id.',
+      );
+      return { committed: false, nothingMatched: true, patchedIds: [] };
+    }
     const commitMsg = `Apply ${count} pending ${projectCtx.productName} comments`;
 
     if (!options.noCommit) {
@@ -175,4 +193,11 @@ export async function markFailed(
     projectKey: ctx.project,
     meta: { commentId: id, reason },
   });
+}
+
+function describeFilter(filter?: QueueFilter): string {
+  const status = filter?.status ?? 'ready';
+  return filter?.environment !== undefined
+    ? `status ${status}, env ${filter.environment}`
+    : `status ${status}`;
 }

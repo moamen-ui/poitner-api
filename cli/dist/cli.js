@@ -5480,8 +5480,14 @@ async function markApplied(options, ctx) {
   let sha;
   const patchedIds = [];
   if (options.id === "all") {
-    const pending = await fetchQueue(ctx, { status: 2 });
+    const pending = await fetchQueue(ctx, options.filter ?? { status: 2 });
     const count = pending.length;
+    if (count === 0) {
+      console.error(
+        "No comments matched --mark all (queue filter: " + describeFilter(options.filter) + "). Nothing was committed or marked; your staged changes are untouched. Re-run with the same --status/--env you used for --plan, or mark each comment by id."
+      );
+      return { committed: false, nothingMatched: true, patchedIds: [] };
+    }
     const commitMsg = `Apply ${count} pending ${projectCtx.productName} comments`;
     if (!options.noCommit) {
       const commitRes = commitAll(commitMsg, ctx.cwd);
@@ -5582,6 +5588,10 @@ async function markFailed(id, reason, ctx, tool, model) {
     projectKey: ctx.project,
     meta: { commentId: id, reason }
   });
+}
+function describeFilter(filter) {
+  const status = filter?.status ?? "ready";
+  return filter?.environment !== void 0 ? `status ${status}, env ${filter.environment}` : `status ${status}`;
 }
 
 // src/commands/apply.ts
@@ -5693,18 +5703,21 @@ async function applyCommand(cwd2, parsed, positionals = []) {
       );
     }
     const model = (typeof parsed["model"] === "string" ? parsed["model"] : void 0) || process.env.POINTER_AI_MODEL;
-    await markApplied(
+    const markStatus = typeof parsed["status"] === "string" ? parsed["status"] : void 0;
+    const markEnv = typeof parsed["env"] === "string" ? parsed["env"] : void 0;
+    const marked = await markApplied(
       {
         id: markId,
         reply,
         noCommit,
         dryRun,
         tool: tool2,
-        model
+        model,
+        filter: markStatus !== void 0 || markEnv !== void 0 ? { status: markStatus, environment: markEnv } : void 0
       },
       clientCtx
     );
-    process.exit(0);
+    process.exit(marked.nothingMatched ? 1 : 0);
   }
   if (parsed["fail"] !== void 0) {
     const failVal = parsed["fail"];

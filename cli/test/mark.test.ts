@@ -289,3 +289,87 @@ test('markFailed sends structured aiTool/aiModel in the reply body when provided
     await stub.close();
   }
 });
+
+async function stagedRepo(): Promise<string> {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'pointer-mark-all-test-'));
+  spawnSync('git', ['init'], { cwd: dir });
+  spawnSync('git', ['config', 'user.name', 'Developer'], { cwd: dir });
+  spawnSync('git', ['config', 'user.email', 'dev@example.com'], { cwd: dir });
+  await fs.writeFile(join(dir, 'README.md'), '# test\n');
+  spawnSync('git', ['add', 'README.md'], { cwd: dir });
+  spawnSync('git', ['commit', '-m', 'Initial commit'], { cwd: dir });
+  await fs.writeFile(join(dir, 'app.js'), 'console.log("fix");\n');
+  spawnSync('git', ['add', 'app.js'], { cwd: dir });
+  return dir;
+}
+
+function queueStub(items: any[], seen: { queueUrls: string[]; patched: number[] }) {
+  return (req: any, res: any) => {
+    const json = (body: unknown) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(body));
+    };
+    if (req.method === 'GET' && req.url === '/api/branding')
+      return json({ isSuccess: true, data: { productName: 'Pointer' } });
+    if (req.method === 'GET' && req.url?.startsWith('/api/projects/my-app/capture-config'))
+      return json({ isSuccess: true, data: { commitStyle: 1 } });
+    if (req.method === 'GET' && req.url?.startsWith('/api/admin/projects/my-app/apply-queue')) {
+      seen.queueUrls.push(req.url);
+      return json({ isSuccess: true, data: { items, pages: {}, pageContexts: {} } });
+    }
+    if (req.method === 'PATCH' && req.url?.startsWith('/api/comments/')) {
+      seen.patched.push(Number(req.url.split('/').pop()));
+      req.resume();
+      return req.on('end', () => json({ isSuccess: true, data: {} }));
+    }
+    if (req.method === 'POST' && req.url === '/api/events') return json({ isSuccess: true });
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: false }));
+  };
+}
+
+test('markApplied all with zero matching comments commits nothing and leaves the staged diff', async () => {
+  const dir = await stagedRepo();
+  const seen = { queueUrls: [] as string[], patched: [] as number[] };
+  const stub = await stubServer(queueStub([], seen));
+  try {
+    const ctx: ApplyClientContext = { server: stub.url, project: 'my-app', token: 't', cwd: dir };
+    const result = await markApplied({ id: 'all', reply: 'Done' }, ctx);
+
+    assert.equal(result.nothingMatched, true);
+    assert.equal(result.committed, false);
+    assert.deepEqual(result.patchedIds, []);
+    assert.deepEqual(seen.patched, []);
+    const log = spawnSync('git', ['log', '--pretty=%s'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(log.stdout.trim(), 'Initial commit', 'no "Apply 0 pending" commit may be made');
+    const staged = spawnSync('git', ['diff', '--cached', '--name-only'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(staged.stdout.trim(), 'app.js', 'the staged change must be left in place');
+  } finally {
+    await stub.close();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('markApplied all uses the --status/--env filter the plan was built with', async () => {
+  const dir = await stagedRepo();
+  const seen = { queueUrls: [] as string[], patched: [] as number[] };
+  const stub = await stubServer(queueStub([{ id: 212 }, { id: 213 }], seen));
+  try {
+    const ctx: ApplyClientContext = { server: stub.url, project: 'my-app', token: 't', cwd: dir };
+    const result = await markApplied(
+      { id: 'all', reply: 'Done', filter: { status: 'open', environment: 'production' } },
+      ctx,
+    );
+
+    assert.equal(result.committed, true);
+    assert.equal(result.nothingMatched, undefined);
+    assert.deepEqual(seen.patched, [212, 213]);
+    assert.match(seen.queueUrls[0], /status=1/);
+    assert.match(seen.queueUrls[0], /environment=3/);
+    const log = spawnSync('git', ['log', '-1', '--pretty=%s'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(log.stdout.trim(), 'Apply 2 pending Pointer comments');
+  } finally {
+    await stub.close();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
