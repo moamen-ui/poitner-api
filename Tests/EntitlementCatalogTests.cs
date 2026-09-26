@@ -46,10 +46,10 @@ public class EntitlementCatalogTests
     }
 
     [Fact]
-    public void SevenEnforcedLevers_AreFlagged()
+    public void NineEnforcedLevers_AreFlagged()
     {
         var enforced = EntitlementCatalog.Enforced.Select(s => s.Key).ToHashSet();
-        Assert.Equal(7, enforced.Count);
+        Assert.Equal(9, enforced.Count);
         Assert.Contains(EntitlementCatalog.MaxProjects, enforced);
         Assert.Contains(EntitlementCatalog.MaxSeats, enforced);
         Assert.Contains(EntitlementCatalog.MaxCommentsPerMonth, enforced);
@@ -57,5 +57,22 @@ public class EntitlementCatalogTests
         Assert.Contains(EntitlementCatalog.MaxExtensionSites, enforced);
         Assert.Contains(EntitlementCatalog.MaxPredefinedActionsPerProject, enforced);
         Assert.Contains(EntitlementCatalog.MaxTenantWidePredefinedActions, enforced);
+        // DB-19 §3.1 — the two new-workspace levers are enforced.
+        Assert.Contains(EntitlementCatalog.MaxOwnedWorkspaces, enforced);
+        Assert.Contains(EntitlementCatalog.NewWorkspaceRequiresApproval, enforced);
+    }
+
+    /// <summary>DB-19 D19.1: catalog defaults for the two new-workspace levers.</summary>
+    [Fact]
+    public void NewLevers_Defaults()
+    {
+        var empty = new PlanEntitlements(); // keys absent — every existing plans row
+        Assert.Equal(
+            1,
+            EntitlementCatalog.ResolveInt(empty, EntitlementCatalog.MaxOwnedWorkspaces)
+        );
+        Assert.True(
+            EntitlementCatalog.ResolveBool(empty, EntitlementCatalog.NewWorkspaceRequiresApproval)
+        );
     }
 }
