@@ -11,13 +11,13 @@ public interface ISettingsService
     public const string EmailEnabled = "email_enabled";
     public const string EmailFromEmail = "email_from_email";
     public const string EmailFromName = "email_from_name";
-    public const string EmailDailyCap = "email_daily_cap";            // default 250 (< Brevo's 300/day)
+    public const string EmailDailyCap = "email_daily_cap"; // default 250 (< Brevo's 300/day)
 
     // Demo settings (super-admin editable).
-    public const string DemoMaxActive = "demo_max_active";            // default 100
-    public const string DemoTtlHours = "demo_ttl_hours";              // default 24
+    public const string DemoMaxActive = "demo_max_active"; // default 100
+    public const string DemoTtlHours = "demo_ttl_hours"; // default 24
     public const string DemoPerEmailPerDay = "demo_per_email_per_day"; // default 3
-    public const string DemoCommentCap = "demo_comment_cap";          // default 10
+    public const string DemoCommentCap = "demo_comment_cap"; // default 10
 
     // Branding settings (super-admin editable).
     public const string BrandProductName = "brand_product_name";
@@ -40,13 +40,19 @@ public interface ISettingsService
     // Monetization settings (super-admin editable). NO provider secrets here — those stay env-only.
     /// <summary>Kill-switch for plan-entitlement enforcement. Default false: deploy off, flip on after soak.</summary>
     public const string EnforcementEnabled = "enforcement_enabled";
+
     /// <summary>Set once after the one-time Legacy backfill of pre-monetization tenants, so later boots
     /// (and later signups) are NOT retroactively granted the unlimited Legacy plan.</summary>
     public const string LegacyBackfillCompleted = "legacy_backfill_completed";
+
+    /// <summary>DB-19 task 7: set once after the one-time Legacy workspace-lever backfill
+    /// (MaxOwnedWorkspaces=-1, NewWorkspaceRequiresApproval=false).</summary>
+    public const string LegacyWorkspaceLeversBackfilled = "legacy_workspace_levers_backfilled";
+
     /// <summary>Slug of the plan new workspace signups default to when none is chosen.</summary>
-    public const string DefaultSignupPlan = "default_signup_plan";    // default "free"
-    public const string TrialDays = "trial_days";                     // default 0
-    public const string Currency = "currency";                        // default "USD"
+    public const string DefaultSignupPlan = "default_signup_plan"; // default "free"
+    public const string TrialDays = "trial_days"; // default 0
+    public const string Currency = "currency"; // default "USD"
 
     Task<bool> GetBoolAsync(string key, bool fallback = false);
     Task SetBoolAsync(string key, bool value);
