@@ -76,9 +76,16 @@ public class MonetizationSignupTests
             return false;
         }
 
-        public string CreateScoped(Guid id, Guid stamp, string purpose, string? payload = null) => "r";
+        public string CreateScoped(Guid id, Guid stamp, string purpose, string? payload = null) =>
+            "r";
 
-        public bool TryValidateScoped(string token, string purpose, out Guid id, out Guid stamp, out string? payload)
+        public bool TryValidateScoped(
+            string token,
+            string purpose,
+            out Guid id,
+            out Guid stamp,
+            out string? payload
+        )
         {
             id = Guid.Empty;
             stamp = Guid.Empty;
@@ -239,8 +246,17 @@ public class MonetizationSignupTests
         var sub = ctx
             .Subscriptions.IgnoreQueryFilters()
             .Single(s => s.OwnerId == membership.OwnerId);
-        Assert.Equal(proId, sub.PlanId);
+
+        // DB-20 §3.6e (F-B1): a paid plan chosen at signup now parks a REQUEST at list price on
+        // Free — entitlements stay Free until a super admin records the payment or comps it.
+        var freeId = ctx.Plans.IgnoreQueryFilters().Single(p => p.Slug == "free").Id;
+        Assert.Equal(freeId, sub.PlanId);
         Assert.Equal(SubscriptionStatus.PendingActivation, sub.Status);
+        Assert.Equal(proId, sub.RequestedPlanId);
+        Assert.NotNull(sub.RequestedAt);
+        Assert.NotNull(sub.RequestedBy);
+        Assert.NotNull(sub.QuotedPrice);
+        Assert.Equal("USD", sub.QuotedCurrency);
     }
 
     [Fact]

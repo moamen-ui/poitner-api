@@ -18,4 +18,14 @@ public class CreateTenantInviteRequest
 
     /// <summary>Link lifetime, 1–30 days. Null = the 7-day default.</summary>
     public int? ExpiresInDays { get; set; }
+
+    // ── DB-20 ──
+
+    /// <summary>Grants <see cref="PlanId"/> for free on accept instead of parking a paid request.
+    /// Requires a live <see cref="PlanId"/> with a positive price.</summary>
+    public bool Complimentary { get; set; }
+
+    public string? CompReason { get; set; }
+
+    public DateTime? CompEndsAt { get; set; }
 }

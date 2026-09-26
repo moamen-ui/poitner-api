@@ -81,7 +81,9 @@ public class PlanService : IPlanService
             Name = request.Name.Trim(),
             Slug = slug,
             PriceMonthly = request.PriceMonthly,
-            Currency = request.Currency.Trim(),
+            // DB-20 §5 task 18: upper-cased at storage (R20) — the validator (task 18) only checks
+            // the 3-letter shape, case-insensitively.
+            Currency = request.Currency.Trim().ToUpperInvariant(),
             Interval = request.Interval,
             SortOrder = request.SortOrder,
             IsActive = request.IsActive,
@@ -135,7 +137,7 @@ public class PlanService : IPlanService
         plan.Name = name;
         plan.Slug = slug;
         plan.PriceMonthly = request.PriceMonthly;
-        plan.Currency = request.Currency.Trim();
+        plan.Currency = request.Currency.Trim().ToUpperInvariant();
         plan.Interval = request.Interval;
         plan.SortOrder = request.SortOrder;
         plan.IsActive = request.IsActive;
@@ -205,13 +207,18 @@ public class PlanService : IPlanService
         return Result<List<PlanPublicResponse>>.Success(plans.Select(MapPublic).ToList());
     }
 
+    // DB-20 §5 task 17: also counts a workspace that has REQUESTED this plan (not yet granted) —
+    // deleting a plan mid-request would strand that request pointing at a gone row.
+    // discount_code_plans scope rows do NOT block a delete (soft delete; scope rows stay, per doc).
     private async Task<int> ActiveSubCountAsync(int planId) =>
         await _unitOfWork
             .Repository<Subscription>()
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .CountAsync(s => s.PlanId == planId && s.DeletedAt == null);
+            .CountAsync(s =>
+                (s.PlanId == planId || s.RequestedPlanId == planId) && s.DeletedAt == null
+            );
 
     // ── Mapping ──────────────────────────────────────────────────────────────
 

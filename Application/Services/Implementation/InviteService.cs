@@ -233,6 +233,21 @@ public class InviteService : IInviteService
             // now join-or-creates the identity (AcceptCreateNewWorkspaceAsync).
         }
 
+        // DB-20 §3.6e: a complimentary invite must name a live, positively-priced plan — there is
+        // nothing to comp otherwise.
+        if (request.CreateNewWorkspace && request.Complimentary)
+        {
+            var compPlanValid =
+                request.PlanId is int compPlanId
+                && await _unitOfWork
+                    .Repository<Plan>()
+                    .Query()
+                    .AsNoTracking()
+                    .AnyAsync(p => p.Id == compPlanId && p.DeletedAt == null && p.PriceMonthly > 0);
+            if (!compPlanValid)
+                return Result<InviteResponse>.Failure(MessageKeys.Billing.PlanMisconfigured);
+        }
+
         var invite = new Invite
         {
             OwnerId = owner,
@@ -245,6 +260,13 @@ public class InviteService : IInviteService
             RevokedAt = null,
             PlanId = request.CreateNewWorkspace ? request.PlanId : null,
             DisplayName = request.CreateNewWorkspace ? request.DisplayName?.Trim() : null,
+            IsComplimentary = request.CreateNewWorkspace && request.Complimentary,
+            CompReason =
+                request.CreateNewWorkspace && request.Complimentary
+                    ? request.CompReason?.Trim()
+                    : null,
+            CompEndsAt =
+                request.CreateNewWorkspace && request.Complimentary ? request.CompEndsAt : null,
         };
 
         await _unitOfWork.Repository<Invite>().AddAsync(invite);
@@ -993,16 +1015,45 @@ public class InviteService : IInviteService
         // Apply the invited plan. Written inline rather than through TenantService.ChangePlanAsync:
         // TenantService already composes IInviteService, so calling back would be a DI cycle.
         //
-        // Status = Active, unlike self-serve signup (AuthService.RegisterAdminAsync:414-419) which
-        // parks a paid plan in PendingActivation. That asymmetry is deliberate: anyone can sign up,
-        // so signup needs a second pair of eyes; a super admin issuing this invitation IS that
-        // approval, and waiting on the person who just invited the workspace would be circular.
-        // Consequence, accepted knowingly: an invited paid plan goes Active with no payment taken.
-        // That is right for comped/sales-led/migrated workspaces, and inert while the billing
-        // provider is Noop. When real billing lands, invited paid workspaces need a comped marker.
+        // DB-20 §3.6e: three cases. A comp invite (invite.IsComplimentary — create-time validated to
+        // name a live, positively-priced plan) grants it for free, Active, comp-stamped, no request —
+        // any non-deleted plan, including hidden/inactive (mirrors F-B11). A non-comp paid invite
+        // parks a request at list price on Free (§3.1: PlanId = Free's id, PendingActivation) instead
+        // of the old zero-payment Active grant — the same shape RegisterAdminAsync now writes. Free /
+        // missing Free row keeps today's zero-write path (a missing subscription already means Free).
         // No IBillingProvider call here — this service has no billing dependency and acceptance is
         // an anonymous request.
-        if (invite.PlanId is int invitedPlanId)
+        if (invite.IsComplimentary && invite.PlanId is int compPlanId)
+        {
+            var plan = await _unitOfWork
+                .Repository<Plan>()
+                .Query()
+                .IgnoreQueryFilters()
+                .AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == compPlanId && p.DeletedAt == null);
+
+            if (plan != null)
+            {
+                var now = DateTime.UtcNow;
+                await _unitOfWork
+                    .Repository<Subscription>()
+                    .AddAsync(
+                        new Subscription
+                        {
+                            OwnerId = workspaceId,
+                            PlanId = plan.Id,
+                            Status = SubscriptionStatus.Active,
+                            IsComplimentary = true,
+                            CompedAt = now,
+                            CompedBy = invite.CreatedBy,
+                            CompReason = invite.CompReason ?? "Invited as complimentary",
+                            CompEndsAt = invite.CompEndsAt,
+                        }
+                    );
+                await _unitOfWork.SaveChangesAsync();
+            }
+        }
+        else if (invite.PlanId is int invitedPlanId)
         {
             var plan = await _unitOfWork
                 .Repository<Plan>()
@@ -1027,8 +1078,13 @@ public class InviteService : IInviteService
                             // Set explicitly: accept runs with no tenant context, so TenantStamp would
                             // produce null and violate this entity's non-null OwnerId.
                             OwnerId = workspaceId,
-                            PlanId = plan.Id,
-                            Status = SubscriptionStatus.Active,
+                            PlanId = await _entitlements.GetFreePlanIdAsync(),
+                            Status = SubscriptionStatus.PendingActivation,
+                            RequestedPlanId = plan.Id,
+                            RequestedAt = DateTime.UtcNow,
+                            RequestedBy = identity!.PublicId,
+                            QuotedPrice = BillingMath.PeriodPrice(plan.PriceMonthly),
+                            QuotedCurrency = plan.Currency.Trim().ToUpperInvariant(),
                         }
                     );
                 await _unitOfWork.SaveChangesAsync();
