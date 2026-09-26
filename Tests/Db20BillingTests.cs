@@ -701,6 +701,130 @@ public class Db20BillingTests
         Assert.Equal(MessageKeys.Billing.CodeAlreadyUsed, result.Message);
     }
 
+    // ── 3c. GET /api/admin/billing/plans (dashboard gap fix) ────────────────────────────────
+
+    [Fact]
+    public async Task ListRequestablePlans_FiltersHiddenInactiveFreeAndComingSoonExcludedByPrice()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceId, adminPid, freeId, proId) = SeedWorkspace(db);
+        int hiddenId,
+            inactiveId,
+            enterpriseId;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var hidden = new Plan
+            {
+                Name = "Internal",
+                Slug = "internal",
+                IsActive = true,
+                DisplayState = PlanDisplayState.Hidden,
+                PriceMonthly = 999m,
+                Currency = "USD",
+                SortOrder = 1,
+                Entitlements = new PlanEntitlements(),
+            };
+            var inactive = new Plan
+            {
+                Name = "Retired",
+                Slug = "retired",
+                IsActive = false,
+                DisplayState = PlanDisplayState.Visible,
+                PriceMonthly = 29.99m,
+                Currency = "USD",
+                SortOrder = 2,
+                Entitlements = new PlanEntitlements(),
+            };
+            var enterprise = new Plan
+            {
+                Name = "Enterprise",
+                Slug = "enterprise",
+                IsActive = true,
+                DisplayState = PlanDisplayState.Visible,
+                PriceMonthly = 499m,
+                Currency = "USD",
+                SortOrder = 3,
+                FeatureBullets = new List<string> { "SSO", "Priority support" },
+                Entitlements = new PlanEntitlements(),
+            };
+            seed.Plans.AddRange(hidden, inactive, enterprise);
+            seed.SaveChanges();
+            hiddenId = hidden.Id;
+            inactiveId = inactive.Id;
+            enterpriseId = enterprise.Id;
+        }
+
+        using var ctx = Ctx(AsAdmin(workspaceId, adminPid), db);
+        var svc = Billing(ctx, AsAdmin(workspaceId, adminPid));
+        var result = await svc.ListRequestablePlansAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        var ids = result.Data!.Select(p => p.Id).ToList();
+        // Free (price 0) is excluded — same PriceMonthly > 0 rule QuoteAsync/RequestPlanAsync apply.
+        Assert.DoesNotContain(freeId, ids);
+        Assert.DoesNotContain(hiddenId, ids);
+        Assert.DoesNotContain(inactiveId, ids);
+        Assert.Contains(proId, ids);
+        Assert.Contains(enterpriseId, ids);
+
+        // Ordered by SortOrder — Pro (seeded first, SortOrder default 0) before Enterprise (3).
+        Assert.True(ids.IndexOf(proId) < ids.IndexOf(enterpriseId));
+
+        var enterprisePlan = result.Data.Single(p => p.Id == enterpriseId);
+        Assert.Equal("enterprise", enterprisePlan.Slug);
+        Assert.Equal(499m, enterprisePlan.Price);
+        Assert.Equal("USD", enterprisePlan.Currency);
+        Assert.Equal("Monthly", enterprisePlan.Interval);
+        Assert.Equal(new List<string> { "SSO", "Priority support" }, enterprisePlan.FeatureBullets);
+    }
+
+    [Fact]
+    public async Task ListRequestablePlans_MarksTheWorkspacesCurrentPlan()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceId, adminPid, _, proId) = SeedWorkspace(db);
+        using (var ctx1 = Ctx(AsAdmin(workspaceId, adminPid), db))
+            Assert.True(
+                (
+                    await Billing(ctx1, AsAdmin(workspaceId, adminPid))
+                        .RequestPlanAsync(proId, null)
+                ).IsSuccess
+            );
+        using (var ctx2 = Ctx(AsSuperAdmin(), db))
+        {
+            var pay = await Billing(ctx2, AsSuperAdmin())
+                .RecordPaymentAsync(
+                    workspaceId,
+                    19.99m,
+                    null,
+                    DateTime.UtcNow,
+                    PaymentMethod.Cash,
+                    null,
+                    null
+                );
+            Assert.True(pay.IsSuccess, pay.Message);
+        }
+
+        using var ctx = Ctx(AsAdmin(workspaceId, adminPid), db);
+        var svc = Billing(ctx, AsAdmin(workspaceId, adminPid));
+        var result = await svc.ListRequestablePlansAsync();
+
+        Assert.True(result.IsSuccess, result.Message);
+        var pro = result.Data!.Single(p => p.Id == proId);
+        Assert.True(pro.IsCurrent);
+    }
+
+    [Fact]
+    public async Task ListRequestablePlans_NotAWorkspaceAdmin_Forbidden()
+    {
+        var db = Guid.NewGuid().ToString();
+        SeedWorkspace(db);
+        using var ctx = Ctx(new FakeCurrentUser(), db); // no TenantId/Id resolved at all
+        var svc = Billing(ctx, new FakeCurrentUser());
+        var result = await svc.ListRequestablePlansAsync();
+        Assert.True(result.IsForbidden, result.Message);
+    }
+
     // ── 4. Record payment ────────────────────────────────────────────────────────────────────
 
     [Fact]

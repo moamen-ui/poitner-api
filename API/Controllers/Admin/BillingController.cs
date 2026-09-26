@@ -42,6 +42,20 @@ public class BillingController(IBillingService billing) : ControllerBase
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
+    /// <summary>The live, requestable plans (with ids) this workspace may quote/request — the
+    /// dashboard gap behind <c>GET /api/admin/plans</c> (SuperAdmin-only) and <c>GET /api/plans</c>
+    /// (anonymous marketing catalog, no ids).</summary>
+    [HttpGet("plans")]
+    [NoAudit("read-only catalog listing, no state change")]
+    [ProducesResponseType(typeof(List<BillablePlanResponse>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetRequestablePlans()
+    {
+        var result = await billing.ListRequestablePlansAsync();
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
     /// <summary>Price preview — no state change. Call on an explicit "Apply code" click and on plan
     /// change, never per keystroke (rate-limited).</summary>
     [HttpPost("quote")]

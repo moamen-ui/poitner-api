@@ -921,6 +921,55 @@ public class BillingService(
         );
     }
 
+    // ── Requestable plans (dashboard gap: a Workspace Admin has no id-carrying plan list) ──────
+
+    public async Task<Result<List<BillablePlanResponse>>> ListRequestablePlansAsync()
+    {
+        var gate = await RequireWorkspaceAdminAsync();
+        if (!gate.IsSuccess)
+            return Result<List<BillablePlanResponse>>.Forbidden(
+                gate.Message ?? MessageKeys.Common.Forbidden
+            );
+
+        var sub = await unitOfWork
+            .Repository<Subscription>()
+            .Query()
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.OwnerId == gate.Data && s.DeletedAt == null);
+
+        // Same shape as QuoteInternalAsync's own Plan lookup (§3.6 step 1) — a plan this endpoint
+        // lists is exactly one /quote and /request would themselves accept for this workspace.
+        var plans = await unitOfWork
+            .Repository<Plan>()
+            .Query()
+            .AsNoTracking()
+            .Where(p =>
+                p.DeletedAt == null
+                && p.IsActive
+                && p.DisplayState != PlanDisplayState.Hidden
+                && p.PriceMonthly > 0
+            )
+            .OrderBy(p => p.SortOrder)
+            .ToListAsync();
+
+        return Result<List<BillablePlanResponse>>.Success(
+            plans
+                .Select(p => new BillablePlanResponse
+                {
+                    Id = p.Id,
+                    Slug = p.Slug,
+                    Name = p.Name,
+                    Price = BillingMath.PeriodPrice(p.PriceMonthly),
+                    Currency = p.Currency.Trim().ToUpperInvariant(),
+                    Interval = p.Interval.ToString(),
+                    FeatureBullets = p.FeatureBullets,
+                    IsCurrent = sub != null && sub.PlanId == p.Id,
+                })
+                .ToList()
+        );
+    }
+
     public async Task<Result<OperatorBillingResponse>> GetOperatorBillingAsync(Guid workspaceId)
     {
         var exists = await unitOfWork

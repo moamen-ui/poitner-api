@@ -19,6 +19,12 @@ public interface IBillingService
 {
     Task<Result<BillingSummaryResponse>> GetSummaryAsync();
     Task<Result<List<WorkspacePaymentResponse>>> GetWorkspacePaymentsAsync();
+
+    /// <summary>The plans this workspace may quote/request — unlike <c>GET /api/plans</c> (the
+    /// anonymous marketing catalog, which omits <c>Id</c> on purpose) or <c>GET /api/admin/plans</c>
+    /// (SuperAdmin-only, the full catalog incl. hidden/internal), a Workspace Admin needs ids for the
+    /// live, requestable subset only.</summary>
+    Task<Result<List<BillablePlanResponse>>> ListRequestablePlansAsync();
     Task<Result<BillingQuoteResponse>> QuoteAsync(int planId, string? referenceCode);
     Task<Result<BillingSummaryResponse>> RequestPlanAsync(int planId, string? referenceCode);
     Task<Result> CancelRequestAsync();

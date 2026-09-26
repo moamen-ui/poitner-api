@@ -626,6 +626,12 @@ workspace export of billing data.
       plan scope multi-select, label, note; drill-down of redemptions with workspace, plan, prices, status). Tenants list shows requested plan / quote / period end / comp.
       All strings via i18n in every locale; helper text on note/reference/label: "Do not enter personal data". The quote call is rate-limited (`danger`,
       10 / 10 min): call it on an explicit "Apply code" click and on plan change, never per keystroke.
+      **Post-review addendum:** the plan picker's data source is `GET /api/admin/billing/plans`
+      (`BillingController`, `[Tags("Billing")]`, `[NoAudit]`) — `BillablePlanResponse { id, slug, name,
+      price, currency, interval, featureBullets, isCurrent }`, the live/active/non-hidden plans this
+      workspace may quote/request, ordered by `SortOrder`. Do not use `GET /api/admin/plans` (SuperAdmin
+      -only, 403s for a Workspace Admin) or `GET /api/plans` (anonymous marketing catalog — omits `id`
+      on purpose, so a quote/request call cannot be built from it) for this picker.
 - [ ] Rebranding agent: new tables/columns/routes/settings keys are brand-neutral; e-mail templates are branding-aware — invoke the rebranding-agent when the templates land
       (they are customer-visible). **NOT done in this pass** — flagged for the orchestrator; the new surfaces (tables/columns/routes/settings keys/templates) are already
       brand-neutral by construction (reviewed while writing them), but the agent itself has not been invoked to record them in the rebranding plan inventory.
