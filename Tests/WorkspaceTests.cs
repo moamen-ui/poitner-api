@@ -394,6 +394,129 @@ public class WorkspaceTests
         Assert.Equal(22, TenantService.HardDeleteOrder.Length);
     }
 
+    // ── 4b. DB-20 §3.6g / §6 test 12: hard delete keeps billing_payments/discount_redemptions ──
+
+    [Fact]
+    public async Task HardDelete_Workspace_KeepsBillingPaymentsAndRedemptions_ReleasesPending()
+    {
+        using var db = new TestDb();
+        var workspaceId = Guid.NewGuid();
+        int planId;
+        long paymentId;
+        long pendingRedemptionId;
+
+        using (var seed = db.MakeContext(new FakeCurrentUser { IsSuperAdmin = true }))
+        {
+            seed.Workspaces.Add(
+                new Workspace
+                {
+                    Id = workspaceId,
+                    Name = "W",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = workspaceId,
+                }
+            );
+            seed.Plans.Add(
+                new Plan
+                {
+                    Name = "Pro",
+                    Slug = "pro",
+                    PriceMonthly = 10,
+                    Currency = "USD",
+                    Entitlements = new Pointer.Domain.ValueObjects.PlanEntitlements(),
+                }
+            );
+            await seed.SaveChangesAsync();
+            planId = seed.Plans.Single().Id;
+
+            var discountCode = new DiscountCode
+            {
+                Code = "SEED1",
+                Kind = DiscountKind.Percent,
+                Value = 10,
+                IsActive = true,
+            };
+            seed.DiscountCodes.Add(discountCode);
+            await seed.SaveChangesAsync();
+            var discountCodeId = discountCode.Id;
+
+            var payment = new BillingPayment
+            {
+                OwnerId = workspaceId,
+                PlanId = planId,
+                Kind = BillingPaymentKind.Payment,
+                Amount = 10,
+                Currency = "USD",
+                Method = PaymentMethod.Cash,
+                PaidAt = DateTime.UtcNow,
+                PeriodStart = DateTime.UtcNow,
+                PeriodEnd = DateTime.UtcNow.AddMonths(1),
+                PreviousPlanId = planId,
+                PreviousStatus = SubscriptionStatus.None,
+                RecordedAt = DateTime.UtcNow,
+                RecordedBy = Guid.NewGuid(),
+            };
+            seed.BillingPayments.Add(payment);
+
+            var pending = new DiscountRedemption
+            {
+                OwnerId = workspaceId,
+                DiscountCodeId = discountCodeId,
+                PlanId = planId,
+                Status = DiscountRedemptionStatus.Pending,
+                CodeSnapshot = "X",
+                OriginalPrice = 10,
+                FinalPrice = 10,
+                PriceCurrency = "USD",
+                CreatedAt = DateTime.UtcNow,
+                CreatedBy = Guid.NewGuid(),
+            };
+            seed.DiscountRedemptions.Add(pending);
+            await seed.SaveChangesAsync();
+            paymentId = payment.Id;
+            pendingRedemptionId = pending.Id;
+
+            var role = new Role
+            {
+                Name = "Workspace Admin",
+                GrantsAdmin = true,
+                IsActive = true,
+                OwnerId = workspaceId,
+            };
+            seed.Roles.Add(role);
+            await seed.SaveChangesAsync();
+        }
+
+        using (var ctx = db.MakeContext(new FakeCurrentUser { IsSuperAdmin = true }))
+        {
+            var svc = new TenantService(
+                new UnitOfWork(ctx),
+                new FakePasswordHasher(),
+                new NoopFileStorage(),
+                new FakeSettings(),
+                new NoopBillingProvider(),
+                new MembershipService(new UnitOfWork(ctx))
+            );
+            var result = await svc.HardDeleteAsync(workspaceId);
+            Assert.True(result.IsSuccess, result.Message);
+        }
+
+        using var verify = db.MakeContext(new FakeCurrentUser { IsSuperAdmin = true });
+        Assert.Null(
+            verify.Workspaces.IgnoreQueryFilters().SingleOrDefault(w => w.Id == workspaceId)
+        );
+
+        var payment2 = verify.BillingPayments.IgnoreQueryFilters().Single(p => p.Id == paymentId);
+        Assert.Null(payment2.OwnerId); // FK SET NULL — survives the workspace (R8.9)
+
+        var redemption = verify
+            .DiscountRedemptions.IgnoreQueryFilters()
+            .Single(r => r.Id == pendingRedemptionId);
+        Assert.Null(redemption.OwnerId);
+        Assert.Equal(DiscountRedemptionStatus.Released, redemption.Status);
+        Assert.Equal(RedemptionReleaseReason.WorkspaceDeleted, redemption.ReleaseReason);
+    }
+
     // ── 5. HardDelete_RemovesEverything_EvenWithSuggestionNotification ──────────────────
 
     [Fact]
