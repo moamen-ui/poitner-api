@@ -91,7 +91,11 @@ public class BillingService(
         DiscountCode? Code
     );
 
-    private async Task<Result<QuoteResult>> QuoteInternalAsync(Guid workspaceId, int planId, string? code)
+    private async Task<Result<QuoteResult>> QuoteInternalAsync(
+        Guid workspaceId,
+        int planId,
+        string? code
+    )
     {
         var plan = await unitOfWork
             .Repository<Plan>()
@@ -114,7 +118,9 @@ public class BillingService(
         var price = BillingMath.PeriodPrice(plan.PriceMonthly);
 
         if (string.IsNullOrWhiteSpace(code))
-            return Result<QuoteResult>.Success(new QuoteResult(plan, price, 0m, price, currency, null));
+            return Result<QuoteResult>.Success(
+                new QuoteResult(plan, price, 0m, price, currency, null)
+            );
 
         var normalized = code.Trim().ToUpperInvariant();
         var dc = await unitOfWork
@@ -161,23 +167,35 @@ public class BillingService(
         if (alreadyUsed)
             return Result<QuoteResult>.Failure(MessageKeys.Billing.CodeAlreadyUsed);
 
-        var (discount, applicable) = BillingMath.Discount(price, dc.Kind, dc.Value, dc.Currency, currency);
+        var (discount, applicable) = BillingMath.Discount(
+            price,
+            dc.Kind,
+            dc.Value,
+            dc.Currency,
+            currency
+        );
         if (!applicable)
             return Result<QuoteResult>.Failure(MessageKeys.Billing.CodeNotForPlan);
 
         var final = BillingMath.FinalPrice(price, discount);
-        return Result<QuoteResult>.Success(new QuoteResult(plan, price, discount, final, currency, dc));
+        return Result<QuoteResult>.Success(
+            new QuoteResult(plan, price, discount, final, currency, dc)
+        );
     }
 
     public async Task<Result<BillingQuoteResponse>> QuoteAsync(int planId, string? referenceCode)
     {
         var gate = await RequireWorkspaceAdminAsync();
         if (!gate.IsSuccess)
-            return Result<BillingQuoteResponse>.Forbidden(gate.Message ?? MessageKeys.Common.Forbidden);
+            return Result<BillingQuoteResponse>.Forbidden(
+                gate.Message ?? MessageKeys.Common.Forbidden
+            );
 
         var quote = await QuoteInternalAsync(gate.Data, planId, referenceCode);
         if (!quote.IsSuccess)
-            return Result<BillingQuoteResponse>.Failure(quote.Message ?? MessageKeys.Billing.CodeInvalid);
+            return Result<BillingQuoteResponse>.Failure(
+                quote.Message ?? MessageKeys.Billing.CodeInvalid
+            );
 
         var q = quote.Data!;
         return Result<BillingQuoteResponse>.Success(
@@ -197,11 +215,16 @@ public class BillingService(
 
     // ── (a) Request a paid plan ──────────────────────────────────────────────────────────────
 
-    public async Task<Result<BillingSummaryResponse>> RequestPlanAsync(int planId, string? referenceCode)
+    public async Task<Result<BillingSummaryResponse>> RequestPlanAsync(
+        int planId,
+        string? referenceCode
+    )
     {
         var gate = await RequireWorkspaceAdminAsync();
         if (!gate.IsSuccess)
-            return Result<BillingSummaryResponse>.Forbidden(gate.Message ?? MessageKeys.Common.Forbidden);
+            return Result<BillingSummaryResponse>.Forbidden(
+                gate.Message ?? MessageKeys.Common.Forbidden
+            );
         var workspaceId = gate.Data;
 
         Subscription? updated = null;
@@ -223,7 +246,10 @@ public class BillingService(
                     .FirstOrDefaultAsync(s => s.OwnerId == workspaceId && s.DeletedAt == null);
 
                 if (sub != null && sub.IsComplimentary)
-                    throw new BillingRuleException(Outcome.Conflict, MessageKeys.Billing.Complimentary);
+                    throw new BillingRuleException(
+                        Outcome.Conflict,
+                        MessageKeys.Billing.Complimentary
+                    );
                 if (
                     sub != null
                     && sub.PlanId == planId
@@ -232,7 +258,10 @@ public class BillingService(
                             or SubscriptionStatus.PastDue
                             or SubscriptionStatus.PendingActivation
                 )
-                    throw new BillingRuleException(Outcome.Conflict, MessageKeys.Billing.AlreadyOnPlan);
+                    throw new BillingRuleException(
+                        Outcome.Conflict,
+                        MessageKeys.Billing.AlreadyOnPlan
+                    );
 
                 // Release this workspace's own Pending redemption, if any, BEFORE quoting — EF's
                 // change tracker doesn't know the partial unique indexes' filters, so the release
@@ -412,7 +441,10 @@ public class BillingService(
                 sub.RequestedBy = null;
                 sub.QuotedPrice = null;
                 sub.QuotedCurrency = null;
-                if (sub.Status == SubscriptionStatus.PendingActivation && sub.PlanId == await entitlements.GetFreePlanIdAsync())
+                if (
+                    sub.Status == SubscriptionStatus.PendingActivation
+                    && sub.PlanId == await entitlements.GetFreePlanIdAsync()
+                )
                     sub.Status = SubscriptionStatus.None;
 
                 await unitOfWork.SaveChangesAsync();
@@ -423,7 +455,10 @@ public class BillingService(
                         AuditTargets.Workspace,
                         workspaceId.ToString(),
                         workspaceId,
-                        After: new Dictionary<string, string> { ["plan_id"] = requestedPlanId!.ToString()! }
+                        After: new Dictionary<string, string>
+                        {
+                            ["plan_id"] = requestedPlanId!.ToString()!,
+                        }
                     )
                 );
             });
@@ -465,9 +500,15 @@ public class BillingService(
                     .IgnoreQueryFilters()
                     .FirstOrDefaultAsync(s => s.OwnerId == workspaceId && s.DeletedAt == null);
                 if (sub == null)
-                    throw new BillingRuleException(Outcome.NotFound, MessageKeys.Billing.NothingToPay);
+                    throw new BillingRuleException(
+                        Outcome.NotFound,
+                        MessageKeys.Billing.NothingToPay
+                    );
                 if (sub.IsComplimentary)
-                    throw new BillingRuleException(Outcome.Conflict, MessageKeys.Billing.Complimentary);
+                    throw new BillingRuleException(
+                        Outcome.Conflict,
+                        MessageKeys.Billing.Complimentary
+                    );
 
                 var targetPlanId = sub.RequestedPlanId ?? sub.PlanId;
                 var target = await unitOfWork
@@ -475,7 +516,10 @@ public class BillingService(
                     .Query()
                     .FirstOrDefaultAsync(p => p.Id == targetPlanId && p.DeletedAt == null);
                 if (target == null || target.PriceMonthly <= 0)
-                    throw new BillingRuleException(Outcome.Conflict, MessageKeys.Billing.NothingToPay);
+                    throw new BillingRuleException(
+                        Outcome.Conflict,
+                        MessageKeys.Billing.NothingToPay
+                    );
 
                 var targetCurrency = target.Currency.Trim().ToUpperInvariant();
                 decimal quoted;
@@ -525,15 +569,27 @@ public class BillingService(
 
                 var effectiveCurrency = (currency ?? targetCurrency).Trim().ToUpperInvariant();
                 if (!Regex.IsMatch(effectiveCurrency, "^[A-Z]{3}$"))
-                    throw new BillingRuleException(Outcome.Failure, MessageKeys.Billing.InvalidAmount);
+                    throw new BillingRuleException(
+                        Outcome.Failure,
+                        MessageKeys.Billing.InvalidAmount
+                    );
                 if (amount < 0 || amount > 9_999_999_999.99m)
-                    throw new BillingRuleException(Outcome.Failure, MessageKeys.Billing.InvalidAmount);
+                    throw new BillingRuleException(
+                        Outcome.Failure,
+                        MessageKeys.Billing.InvalidAmount
+                    );
                 var now = DateTime.UtcNow;
                 var paidAtUtc = DateTime.SpecifyKind(paidAt.ToUniversalTime(), DateTimeKind.Utc);
                 if (paidAtUtc < now.AddDays(-366) || paidAtUtc > now.AddMinutes(5))
-                    throw new BillingRuleException(Outcome.Failure, MessageKeys.Billing.InvalidPaidAt);
+                    throw new BillingRuleException(
+                        Outcome.Failure,
+                        MessageKeys.Billing.InvalidPaidAt
+                    );
                 if ((reference?.Length ?? 0) > 128 || (note?.Length ?? 0) > 500)
-                    throw new BillingRuleException(Outcome.Failure, MessageKeys.Billing.InvalidAmount);
+                    throw new BillingRuleException(
+                        Outcome.Failure,
+                        MessageKeys.Billing.InvalidAmount
+                    );
 
                 // F-B4: first payment / plan change starts NOW; a contiguous renewal starts at the
                 // old period end (late payers pay for the grace days; early renewals stack).
@@ -638,10 +694,15 @@ public class BillingService(
                 );
 
                 var payment = await unitOfWork.BillingPayments.FirstOrDefaultAsync(p =>
-                    p.Id == paymentId && p.OwnerId == workspaceId && p.Kind == BillingPaymentKind.Payment
+                    p.Id == paymentId
+                    && p.OwnerId == workspaceId
+                    && p.Kind == BillingPaymentKind.Payment
                 );
                 if (payment == null)
-                    throw new BillingRuleException(Outcome.NotFound, MessageKeys.Billing.NothingToPay);
+                    throw new BillingRuleException(
+                        Outcome.NotFound,
+                        MessageKeys.Billing.NothingToPay
+                    );
 
                 var alreadyVoided = await unitOfWork.BillingPayments.AnyAsync(p =>
                     p.VoidsPaymentId == payment.Id
@@ -672,7 +733,10 @@ public class BillingService(
                     .IgnoreQueryFilters()
                     .FirstOrDefaultAsync(s => s.OwnerId == workspaceId && s.DeletedAt == null);
                 if (sub == null)
-                    throw new BillingRuleException(Outcome.NotFound, MessageKeys.Billing.NothingToPay);
+                    throw new BillingRuleException(
+                        Outcome.NotFound,
+                        MessageKeys.Billing.NothingToPay
+                    );
 
                 var now = DateTime.UtcNow;
                 var voidRow = new BillingPayment
@@ -695,7 +759,10 @@ public class BillingService(
                 var restoredPlanId = payment.PreviousPlanId!.Value;
                 var restoredStatus = payment.PreviousStatus!.Value;
                 var freeId = await entitlements.GetFreePlanIdAsync();
-                if (restoredStatus == SubscriptionStatus.PendingActivation && restoredPlanId == freeId)
+                if (
+                    restoredStatus == SubscriptionStatus.PendingActivation
+                    && restoredPlanId == freeId
+                )
                     restoredStatus = SubscriptionStatus.None;
 
                 sub.PlanId = restoredPlanId;
@@ -723,7 +790,10 @@ public class BillingService(
                         AuditTargets.Workspace,
                         workspaceId.ToString(),
                         workspaceId,
-                        After: new Dictionary<string, string> { ["payment_id"] = payment.Id.ToString() }
+                        After: new Dictionary<string, string>
+                        {
+                            ["payment_id"] = payment.Id.ToString(),
+                        }
                     )
                 );
             });
@@ -755,7 +825,10 @@ public class BillingService(
                     .IgnoreQueryFilters()
                     .FirstOrDefaultAsync(s => s.OwnerId == workspaceId && s.DeletedAt == null);
                 if (sub is not { IsComplimentary: true })
-                    throw new BillingRuleException(Outcome.Conflict, MessageKeys.Billing.StateChanged);
+                    throw new BillingRuleException(
+                        Outcome.Conflict,
+                        MessageKeys.Billing.StateChanged
+                    );
 
                 var now = DateTime.UtcNow;
                 sub.IsComplimentary = false;
@@ -794,7 +867,9 @@ public class BillingService(
     {
         var gate = await RequireWorkspaceAdminAsync();
         if (!gate.IsSuccess)
-            return Result<BillingSummaryResponse>.Forbidden(gate.Message ?? MessageKeys.Common.Forbidden);
+            return Result<BillingSummaryResponse>.Forbidden(
+                gate.Message ?? MessageKeys.Common.Forbidden
+            );
         return await BuildSummaryAsync(gate.Data, null);
     }
 
@@ -834,13 +909,17 @@ public class BillingService(
 
     public async Task<Result<OperatorBillingResponse>> GetOperatorBillingAsync(Guid workspaceId)
     {
-        var exists = await unitOfWork.Workspaces.IgnoreQueryFilters().AnyAsync(w => w.Id == workspaceId);
+        var exists = await unitOfWork
+            .Workspaces.IgnoreQueryFilters()
+            .AnyAsync(w => w.Id == workspaceId);
         if (!exists)
             return Result<OperatorBillingResponse>.NotFound("Tenant not found.");
 
         var summary = await BuildSummaryAsync(workspaceId, null);
         if (!summary.IsSuccess)
-            return Result<OperatorBillingResponse>.Failure(summary.Message ?? MessageKeys.Common.NotFound);
+            return Result<OperatorBillingResponse>.Failure(
+                summary.Message ?? MessageKeys.Common.NotFound
+            );
 
         var payments = await unitOfWork
             .BillingPayments.IgnoreQueryFilters()
