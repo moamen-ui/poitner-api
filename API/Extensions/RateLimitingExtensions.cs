@@ -1,5 +1,5 @@
-using Microsoft.AspNetCore.RateLimiting;
 using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Pointer.API.Extensions;
 
@@ -13,8 +13,10 @@ public static class RateLimitingExtensions
     /// </summary>
     private const int SlidingWindowSegmentSeconds = 10;
 
-    public static IServiceCollection AddApiRateLimiting(this IServiceCollection services, IConfiguration? configuration = null) =>
-        services.AddRateLimiter(o => Configure(o, configuration));
+    public static IServiceCollection AddApiRateLimiting(
+        this IServiceCollection services,
+        IConfiguration? configuration = null
+    ) => services.AddRateLimiter(o => Configure(o, configuration));
 
     // Public (not folded into AddApiRateLimiting) so tests can assert on the configured options.
     public static void Configure(RateLimiterOptions o) => Configure(o, null);
@@ -41,8 +43,9 @@ public static class RateLimitingExtensions
         {
             if (ctx.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
             {
-                ctx.HttpContext.Response.Headers.RetryAfter =
-                    ((int)Math.Ceiling(retryAfter.TotalSeconds)).ToString();
+                ctx.HttpContext.Response.Headers.RetryAfter = (
+                    (int)Math.Ceiling(retryAfter.TotalSeconds)
+                ).ToString();
             }
             else
             {
@@ -55,10 +58,13 @@ public static class RateLimitingExtensions
                 // ship with no Retry-After header at all, silently, while every other policy's
                 // works. Fall back to the segment length — the shortest time after which at least
                 // one permit can free up, and a safe (if slightly conservative) lower bound.
-                var policyName = ctx.HttpContext.GetEndpoint()?.Metadata
-                    .GetMetadata<EnableRateLimitingAttribute>()?.PolicyName;
+                var policyName = ctx
+                    .HttpContext.GetEndpoint()
+                    ?.Metadata.GetMetadata<EnableRateLimitingAttribute>()
+                    ?.PolicyName;
                 if (policyName is "comments" or "builds")
-                    ctx.HttpContext.Response.Headers.RetryAfter = SlidingWindowSegmentSeconds.ToString();
+                    ctx.HttpContext.Response.Headers.RetryAfter =
+                        SlidingWindowSegmentSeconds.ToString();
             }
             return ValueTask.CompletedTask;
         };
@@ -68,15 +74,19 @@ public static class RateLimitingExtensions
         static string ClientIp(HttpContext ctx) =>
             ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
-        o.AddPolicy("signup", ctx =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                ClientIp(ctx),
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = signupPermitLimit,
-                    Window = TimeSpan.FromHours(1),
-                    QueueLimit = 0
-                }));
+        o.AddPolicy(
+            "signup",
+            ctx =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    ClientIp(ctx),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = signupPermitLimit,
+                        Window = TimeSpan.FromHours(1),
+                        QueueLimit = 0,
+                    }
+                )
+        );
 
         // DB-18 §3.7 — a documented R16 departure (DB-RULES R16 amendment): the anonymous
         // workspace-deletion token endpoints (preview/confirm/pause-instead) redeem a scoped token
@@ -90,106 +100,169 @@ public static class RateLimitingExtensions
         if (int.TryParse(configuredDanger, out var parsedDanger) && parsedDanger > 0)
             dangerPermitLimit = parsedDanger;
 
-        o.AddPolicy("danger", ctx =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                DangerPartitionKey(ctx),
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = dangerPermitLimit,
-                    Window = TimeSpan.FromMinutes(10),
-                    QueueLimit = 0
-                }));
+        o.AddPolicy(
+            "danger",
+            ctx =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    DangerPartitionKey(ctx),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = dangerPermitLimit,
+                        Window = TimeSpan.FromMinutes(10),
+                        QueueLimit = 0,
+                    }
+                )
+        );
+
+        // DB-19 §3.5 — POST /api/me/workspaces ("workspace-create"): 5/h per identity+IP
+        // (D19.8). Human-scale; the MaxOwnedWorkspaces plan cap is the real limit — this only
+        // bounds retries and spam. Partitioned like "danger" (sub claim + IP when authenticated).
+        var workspaceCreatePermitLimit = 5;
+        var configuredWorkspaceCreate = configuration?[
+            "Security:RateLimits:WorkspaceCreatePerHour"
+        ];
+        if (
+            int.TryParse(configuredWorkspaceCreate, out var parsedWorkspaceCreate)
+            && parsedWorkspaceCreate > 0
+        )
+            workspaceCreatePermitLimit = parsedWorkspaceCreate;
+
+        o.AddPolicy(
+            "workspace-create",
+            ctx =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    DangerPartitionKey(ctx),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = workspaceCreatePermitLimit,
+                        Window = TimeSpan.FromHours(1),
+                        QueueLimit = 0,
+                    }
+                )
+        );
 
         // Device-code sign-in (`pointer login`). `start` mints a code — a handful per network is
         // plenty. `poll` is the CLI asking "approved yet?" every ~3s for up to 10 minutes; sharing the
         // 5-per-hour "signup" budget with it (the original wiring) exhausted the budget 15 seconds
         // into the very first sign-in and every later attempt from that IP was a 429.
-        o.AddPolicy("device-start", ctx =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                ClientIp(ctx),
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 20,
-                    Window = TimeSpan.FromMinutes(10),
-                    QueueLimit = 0
-                }));
-        o.AddPolicy("device-poll", ctx =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                ClientIp(ctx),
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 120,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0
-                }));
+        o.AddPolicy(
+            "device-start",
+            ctx =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    ClientIp(ctx),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 20,
+                        Window = TimeSpan.FromMinutes(10),
+                        QueueLimit = 0,
+                    }
+                )
+        );
+        o.AddPolicy(
+            "device-poll",
+            ctx =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    ClientIp(ctx),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 120,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                    }
+                )
+        );
 
-        o.AddPolicy("demo", ctx =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                ClientIp(ctx),
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 3,
-                    Window = TimeSpan.FromHours(1),
-                    QueueLimit = 0
-                }));
+        o.AddPolicy(
+            "demo",
+            ctx =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    ClientIp(ctx),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 3,
+                        Window = TimeSpan.FromHours(1),
+                        QueueLimit = 0,
+                    }
+                )
+        );
 
         // Light limit for the anonymous public plans endpoint (landing hits it on every page load).
-        o.AddPolicy("plans", ctx =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                ClientIp(ctx),
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 60,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0
-                }));
+        o.AddPolicy(
+            "plans",
+            ctx =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    ClientIp(ctx),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 60,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                    }
+                )
+        );
 
-        o.AddPolicy("meta", ctx =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                ClientIp(ctx),
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 120,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0
-                }));
+        o.AddPolicy(
+            "meta",
+            ctx =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    ClientIp(ctx),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 120,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                    }
+                )
+        );
 
         static string UserOrIp(HttpContext ctx) => PartitionKeyFor(ctx);
 
-        o.AddPolicy("events", ctx =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                UserOrIp(ctx),
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 60,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0
-                }));
+        o.AddPolicy(
+            "events",
+            ctx =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    UserOrIp(ctx),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 60,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                    }
+                )
+        );
 
         // Magic-link redemption. Per IP, and deliberately NOT the signup budget (5/hour): a whole
         // agency behind one NAT address would be locked out after five clients opened their links.
         // 60/minute still makes brute-forcing a 256-bit token pointless.
-        o.AddPolicy("login", ctx =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                ClientIp(ctx),
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 60,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0
-                }));
+        o.AddPolicy(
+            "login",
+            ctx =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    ClientIp(ctx),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 60,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                    }
+                )
+        );
 
         // Per-IP flood floor for password login (R5-59 §12). Failed attempts are counted
         // per-email by ILoginAttemptLimiter; this per-IP floor exists purely to stop raw network floods.
-        o.AddPolicy("login-ip", ctx =>
-            RateLimitPartition.GetFixedWindowLimiter(
-                ClientIp(ctx),
-                _ => new FixedWindowRateLimiterOptions
-                {
-                    PermitLimit = 60,
-                    Window = TimeSpan.FromMinutes(1),
-                    QueueLimit = 0
-                }));
+        o.AddPolicy(
+            "login-ip",
+            ctx =>
+                RateLimitPartition.GetFixedWindowLimiter(
+                    ClientIp(ctx),
+                    _ => new FixedWindowRateLimiterOptions
+                    {
+                        PermitLimit = 60,
+                        Window = TimeSpan.FromMinutes(1),
+                        QueueLimit = 0,
+                    }
+                )
+        );
 
         o.AddPolicy("comments", CommentsPartition);
 
@@ -220,8 +293,9 @@ public static class RateLimitingExtensions
                 PermitLimit = 30,
                 Window = TimeSpan.FromMinutes(1),
                 SegmentsPerWindow = 6,
-                QueueLimit = 0
-            });
+                QueueLimit = 0,
+            }
+        );
     }
 
     public static RateLimitPartition<string> CommentsPartition(HttpContext ctx)
@@ -233,8 +307,9 @@ public static class RateLimitingExtensions
                 PermitLimit = 30,
                 Window = TimeSpan.FromMinutes(1),
                 SegmentsPerWindow = 6,
-                QueueLimit = 0
-            });
+                QueueLimit = 0,
+            }
+        );
     }
 
     /// <summary>
@@ -250,9 +325,12 @@ public static class RateLimitingExtensions
     /// </remarks>
     public static string PartitionKeyFor(HttpContext ctx)
     {
-        var userId = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-                     ?? ctx.User.FindFirst(Microsoft.IdentityModel.JsonWebTokens.JwtRegisteredClaimNames.Sub)?.Value
-                     ?? ctx.User.FindFirst("sub")?.Value;
+        var userId =
+            ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? ctx.User.FindFirst(
+                Microsoft.IdentityModel.JsonWebTokens.JwtRegisteredClaimNames.Sub
+            )?.Value
+            ?? ctx.User.FindFirst("sub")?.Value;
 
         return !string.IsNullOrEmpty(userId)
             ? $"user:{userId}"
@@ -266,9 +344,12 @@ public static class RateLimitingExtensions
     /// </summary>
     public static string DangerPartitionKey(HttpContext ctx)
     {
-        var userId = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-                     ?? ctx.User.FindFirst(Microsoft.IdentityModel.JsonWebTokens.JwtRegisteredClaimNames.Sub)?.Value
-                     ?? ctx.User.FindFirst("sub")?.Value;
+        var userId =
+            ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? ctx.User.FindFirst(
+                Microsoft.IdentityModel.JsonWebTokens.JwtRegisteredClaimNames.Sub
+            )?.Value
+            ?? ctx.User.FindFirst("sub")?.Value;
         var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
         return !string.IsNullOrEmpty(userId) ? $"user:{userId}:ip:{ip}" : $"ip:{ip}";
