@@ -10,7 +10,10 @@ R10 (the two JSON keys, the audit `source` value and the rate-limit policy name 
 jsonb bag gains two optional keys — add-only versioning), R13, R14 (no new person-bearing column), **R16** (session workspace from the JWT;
 `ICurrentUser.Id` is the identity), **R17** (one audit row per creation, whitelisted keys only), **R19** (the action lives on a class-level
 `[AllowWhenWorkspacePaused]` controller — justified in §3.6).
-**Class: Additive** (no table/column change; the migration has empty `Up()`/`Down()`). **Status: written 2026-09-25, not implemented.**
+**Class: Additive** (no table/column change; the migration has empty `Up()`/`Down()`). **Status: written
+2026-09-25; implemented 2026-09-26 (backend only — `dotnet build`/`dotnet test` green, 1560 tests, Postgres
+concurrency test passing, `has-pending-model-changes` clean; not yet deployed, not yet synced to the
+dashboard).**
 Owner decisions D19.1–D19.9 (§3.8) proceed on the recommended defaults unless the owner says otherwise.
 
 **Dependencies.** DB-11a (memberships, D13 multi-workspace admins), DB-11b (switch-workspace), DB-12 (`IAuditWriter`), DB-14 (verification),
