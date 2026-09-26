@@ -51,7 +51,7 @@ TXT 200
     }
 }
 
-api.pointer.moamen.work {
+api.pointer.moamen.work, api.pinsay.dev {
     # The widget loader/styles/skill are UNHASHED and updated in place on every deploy. Without this,
     # browsers (and the extension's injected <script src=".../widget.js">) heuristically cache the old
     # copy — stale widget, and the "widget auto-updates from the server" premise silently breaks.
@@ -91,7 +91,7 @@ api.pointer.moamen.work {
 }
 
 # Default dashboard host → the React dashboard (the only dashboard since 2026-09-15).
-app.pointer.moamen.work {
+app.pointer.moamen.work, app.pinsay.dev {
     root * /srv/dashboard/react
     import dashboard
     import security-headers DENY
@@ -99,21 +99,21 @@ app.pointer.moamen.work {
     # Report-only for one deploy cycle (§9 release steps) before switching to enforced CSP. The
     # dashboard loads the Pointer widget (script + styles) from the API origin and calls the API
     # for data; style-src needs 'unsafe-inline' because the widget injects inline styles.
-    header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://api.pointer.moamen.work; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.pointer.moamen.work; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://api.pointer.moamen.work https://api.pinsay.dev; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.pointer.moamen.work https://api.pinsay.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 }
 
 # Demo host → the dashboard with the "Try the demo" entry (guests provision an
 # ephemeral, self-expiring tenant). Same React build as app.pointer.
-demo.pointer.moamen.work {
+demo.pointer.moamen.work, demo.pinsay.dev {
     root * /srv/dashboard/react
     import dashboard
     import security-headers DENY
     import security-txt
-    header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://api.pointer.moamen.work; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.pointer.moamen.work; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://api.pointer.moamen.work https://api.pinsay.dev; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.pointer.moamen.work https://api.pinsay.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
 }
 
 # Bare domain → the marketing landing page (served from the bind-mounted landing/ dir).
-pointer.moamen.work {
+pointer.moamen.work, pinsay.dev {
     root * /srv/landing
     import dashboard
     import security-headers DENY
@@ -123,5 +123,18 @@ pointer.moamen.work {
     # (landing/index.html:942,1010,1046,1105,1166,1265,1268) — so, unlike the doc's original
     # "self-only connect-src" draft, script-src/connect-src must allow the API origin too, same
     # as the dashboard hosts. style-src needs 'unsafe-inline' for the same widget reason.
-    header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://api.pointer.moamen.work; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.pointer.moamen.work; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https://api.pointer.moamen.work https://api.pinsay.dev; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://api.pointer.moamen.work https://api.pinsay.dev; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+}
+
+# PinSay domain (2026-09-26): served alongside pointer.moamen.work until the rebrand cutover.
+# docs.pinsay.dev serves the landing's docs/ folder; www redirects to the apex.
+docs.pinsay.dev {
+    root * /srv/landing/docs
+    import dashboard
+    import security-headers DENY
+    import security-txt
+}
+
+www.pinsay.dev {
+    redir https://pinsay.dev{uri} permanent
 }

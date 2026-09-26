@@ -155,6 +155,10 @@ string[] dashboardOrigins =
     "https://app.pointer.moamen.work",
     "https://demo.pointer.moamen.work",
     "https://pointer.moamen.work",
+    // PinSay domain, served alongside the old one until the rebrand cutover (2026-09-26).
+    "https://app.pinsay.dev",
+    "https://demo.pinsay.dev",
+    "https://pinsay.dev",
 ];
 
 // Cors__ExtraDashboardOrigins (comma-separated) extends the allow-list per environment —
