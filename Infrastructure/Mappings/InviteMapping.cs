@@ -8,7 +8,14 @@ public class InviteMapping : IEntityTypeConfiguration<Invite>
 {
     public void Configure(EntityTypeBuilder<Invite> b)
     {
-        b.ToTable("invites");
+        b.ToTable(
+            "invites",
+            t =>
+                t.HasCheckConstraint(
+                    "ck_invites_comp_consistent",
+                    "(is_complimentary OR (comp_reason IS NULL AND comp_ends_at IS NULL)) AND (NOT is_complimentary OR (owner_id IS NULL AND plan_id IS NOT NULL))"
+                )
+        );
 
         // BaseEntity columns
         b.Property(x => x.Id).HasColumnName("id");
@@ -45,5 +52,12 @@ public class InviteMapping : IEntityTypeConfiguration<Invite>
         b.HasOne<Plan>().WithMany().HasForeignKey(x => x.PlanId).OnDelete(DeleteBehavior.Restrict);
         b.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(120);
         b.HasIndex(x => x.OwnerId);
+
+        // ── DB-20: new-workspace invites only ──
+        b.Property(x => x.IsComplimentary)
+            .HasColumnName("is_complimentary")
+            .HasDefaultValue(false);
+        b.Property(x => x.CompReason).HasColumnName("comp_reason").HasMaxLength(200);
+        b.Property(x => x.CompEndsAt).HasColumnName("comp_ends_at");
     }
 }

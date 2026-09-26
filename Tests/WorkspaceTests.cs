@@ -340,7 +340,8 @@ public class WorkspaceTests
 
     // DB-RULES R8.8: operator/analytics tables exempt from HardDeleteOrder BY NAME — their rows
     // survive the workspace (FK SET NULL). DB-12 appends AuditEvent; DB-13 appends
-    // ImpersonationSession, DB-15 UsageDaily. The fact below pins the list.
+    // ImpersonationSession, DB-15 UsageDaily; DB-20 appends BillingPayment/DiscountRedemption (R8.9 —
+    // financial ledger tables, never swept). The fact below pins the list.
     internal static readonly Type[] OperatorTableExclusions =
     {
         typeof(Workspace),
@@ -348,6 +349,8 @@ public class WorkspaceTests
         typeof(AuditEvent), // operator record: FK SET NULL, survives the workspace (DB-12, R8.8)
         typeof(ImpersonationSession), // operator record: FK SET NULL, survives the workspace (DB-13)
         typeof(UsageDaily), // analytics rollup: FK SET NULL, survives the workspace (DB-15)
+        typeof(BillingPayment), // financial ledger: FK SET NULL, survives the workspace (DB-20, R8.9)
+        typeof(DiscountRedemption), // financial ledger: FK SET NULL, survives the workspace (DB-20, R8.9)
     };
 
     [Fact]
@@ -361,6 +364,8 @@ public class WorkspaceTests
                 typeof(AuditEvent),
                 typeof(ImpersonationSession),
                 typeof(UsageDaily),
+                typeof(BillingPayment),
+                typeof(DiscountRedemption),
             },
             OperatorTableExclusions
         );

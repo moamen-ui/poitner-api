@@ -13,6 +13,12 @@ public interface IUnitOfWork
     DbSet<UserAlias> UserAliases { get; }
     DbSet<AuditEvent> AuditEvents { get; }
     DbSet<ImpersonationSession> ImpersonationSessions { get; }
+
+    /// <summary>DB-20 R8.9/R17: append-only ledger, not <c>BaseEntity</c> — like AuditEvents.</summary>
+    DbSet<BillingPayment> BillingPayments { get; }
+
+    /// <summary>DB-20 R8.9: not <c>BaseEntity</c> — like AuditEvents.</summary>
+    DbSet<DiscountRedemption> DiscountRedemptions { get; }
     Task<int> SaveChangesAsync();
 
     /// <summary>

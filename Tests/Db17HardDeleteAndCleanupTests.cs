@@ -258,6 +258,8 @@ public class Db17HardDeleteAndCleanupTests
         public DbSet<UserAlias> UserAliases => inner.UserAliases;
         public DbSet<AuditEvent> AuditEvents => inner.AuditEvents;
         public DbSet<ImpersonationSession> ImpersonationSessions => inner.ImpersonationSessions;
+        public DbSet<BillingPayment> BillingPayments => inner.BillingPayments;
+        public DbSet<DiscountRedemption> DiscountRedemptions => inner.DiscountRedemptions;
 
         public Task<int> SaveChangesAsync() => inner.SaveChangesAsync();
 
