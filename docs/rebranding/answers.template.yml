@@ -7,8 +7,8 @@
 #   set -a; . ./rebrand.env; set +a
 # Then sanity-check the required ones are non-empty:
 #   for v in NAME_DISPLAY NAME_PASCAL NAME_LOWER NAME_KEBAB NAME_UPPER NAME_SNAKE DOMAIN \
-#            REPO_API REPO_DASHBOARD REPO_EXTENSION REPO_WIDGET NPM_SCOPE PKG_ANGULAR \
-#            PKG_REACT PKG_VUE LIVE_INSTALLS; do
+#            REPO_API REPO_DASHBOARD REPO_EXTENSION REPO_WIDGET NPM_SCOPE \
+#            PKG_REACT LIVE_INSTALLS; do
 #     [ -n "${!v}" ] || echo "MISSING: $v"; done
 
 # ---------------------------------------------------------------- brand ------
@@ -26,10 +26,8 @@ TAGLINE:        ""      # Q4   <=132 chars (Chrome Web Store hard limit)
 DOMAIN:          ""     # REQUIRED  Q5   apex, e.g. pointkit.dev
 HOST_API:        ""     # api.$DOMAIN
 HOST_APP:        ""     # app.$DOMAIN
-HOST_APP_NG:     ""     # app-angular.$DOMAIN
-HOST_APP_REACT:  ""     # app-react.$DOMAIN
-HOST_APP_VUE:    ""     # app-vue.$DOMAIN
 HOST_DEMO:       ""     # demo.$DOMAIN
+HOST_DOCS:       ""     # docs.$DOMAIN — the docs site (today served at /docs/ under the landing)
 HOST_LANDING:    ""     # $DOMAIN
 EMAIL_FROM:      ""     # Q8   noreply@$DOMAIN — must be a VERIFIED Brevo sender before cutover
 EMAIL_FROM_NAME: ""     # Q8
@@ -48,9 +46,7 @@ LANDING_HOME:    ""     # api-repo | own-repo
 
 # ------------------------------------------------------------- packages ------
 NPM_SCOPE:       ""     # REQUIRED  Q15  e.g. @moamen-ui
-PKG_ANGULAR:     ""     # REQUIRED  Q16  e.g. @moamen-ui/pointkit-angular
-PKG_REACT:       ""     # REQUIRED  Q16
-PKG_VUE:         ""     # REQUIRED  Q16
+PKG_REACT:       ""     # REQUIRED  Q16  e.g. @moamen-ui/pointkit-react
 PKG_WIDGET:      ""     # only if SPLIT_STRATEGY=A
 PKG_START_VER:   ""     # Q17  e.g. 1.0.0 — MUST be passed explicitly on the first publish (§8.6)
 DEPRECATE_OLD:   ""     # Q18  deprecate  (never "unpublish")

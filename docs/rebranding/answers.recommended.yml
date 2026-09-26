@@ -1,6 +1,7 @@
 # RECOMMENDED answers (2026-09-26) — proposals for the owner to confirm or change, NOT yet approved.
 # Brand PinSay / pinsay.dev was chosen by the owner 2026-09-26; everything else below is a recommendation.
-# Retired Angular/Vue: HOST_APP_NG/VUE and PKG_ANGULAR/VUE are n/a. SPLIT_STRATEGY=D keeps widget +
+# Angular/Vue were retired 2026-09-15 (tag last-three-apps, branch legacy/angular-vue) — out of scope;
+# their HOST_APP_*/PKG_* fields are removed. SPLIT_STRATEGY=D keeps widget +
 # extension inside the API repo, so REPO_WIDGET/REPO_EXTENSION intentionally equal REPO_API.
 #
 # Rebranding answers — fill this in with the human, then paste it into the executing agent's
@@ -12,8 +13,8 @@
 #   set -a; . ./rebrand.env; set +a
 # Then sanity-check the required ones are non-empty:
 #   for v in NAME_DISPLAY NAME_PASCAL NAME_LOWER NAME_KEBAB NAME_UPPER NAME_SNAKE DOMAIN \
-#            REPO_API REPO_DASHBOARD REPO_EXTENSION REPO_WIDGET NPM_SCOPE PKG_ANGULAR \
-#            PKG_REACT PKG_VUE LIVE_INSTALLS; do
+#            REPO_API REPO_DASHBOARD REPO_EXTENSION REPO_WIDGET NPM_SCOPE \
+#            PKG_REACT LIVE_INSTALLS; do
 #     [ -n "${!v}" ] || echo "MISSING: $v"; done
 
 # ---------------------------------------------------------------- brand ------
@@ -31,10 +32,8 @@ TAGLINE: "Pin any element on your live app, say what you want — your AI coding
 DOMAIN: "pinsay.dev"   # REQUIRED  Q5   apex, e.g. pointkit.dev
 HOST_API: "api.pinsay.dev"   # api.$DOMAIN
 HOST_APP: "app.pinsay.dev"   # app.$DOMAIN
-HOST_APP_NG: ""   # app-angular.$DOMAIN
-HOST_APP_REACT: ""   # app-react.$DOMAIN
-HOST_APP_VUE: ""   # app-vue.$DOMAIN
 HOST_DEMO: "demo.pinsay.dev"   # demo.$DOMAIN
+HOST_DOCS: "docs.pinsay.dev"   # owner 2026-09-26 — subdomain created
 HOST_LANDING: "pinsay.dev"   # $DOMAIN
 EMAIL_FROM: "noreply@pinsay.dev"   # Q8   noreply@$DOMAIN — must be a VERIFIED Brevo sender before cutover
 EMAIL_FROM_NAME: "PinSay"   # Q8
@@ -53,9 +52,7 @@ LANDING_HOME: "api-repo"   # api-repo | own-repo
 
 # ------------------------------------------------------------- packages ------
 NPM_SCOPE: "@moamen-ui"   # REQUIRED  Q15  e.g. @moamen-ui
-PKG_ANGULAR: "n/a"   # REQUIRED  Q16  e.g. @moamen-ui/pointkit-angular
-PKG_REACT: "@moamen-ui/pinsay-react"   # REQUIRED  Q16
-PKG_VUE: "n/a"   # REQUIRED  Q16
+PKG_REACT: "@moamen-ui/pinsay"   # Q16 — owner 2026-09-26; GitHub Packages requires the @moamen-ui scope
 PKG_WIDGET: ""   # only if SPLIT_STRATEGY=A
 PKG_START_VER: "1.0.0"   # Q17  e.g. 1.0.0 — MUST be passed explicitly on the first publish (§8.6)
 DEPRECATE_OLD: "deprecate"   # Q18  deprecate  (never "unpublish")
