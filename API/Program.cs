@@ -131,6 +131,9 @@ builder.Services.AddHostedService<UptimePingService>();
 // DB-13: closes impersonation sessions whose ExpiresAt has passed (§3.5/§3.6 sweep).
 builder.Services.AddHostedService<ImpersonationSweepService>();
 
+// DB-20: billing v1's period job (comp end, renewal reminder, past due, downgrade to Free).
+builder.Services.AddHostedService<BillingPeriodJob>();
+
 builder.Services.AddApiRateLimiting(builder.Configuration);
 
 // CORS is split by audience. The WIDGET is embedded on arbitrary customer sites and calls the
