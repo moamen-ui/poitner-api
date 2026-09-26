@@ -49,7 +49,16 @@ public class PlanServiceTests
             IsActive = true,
             DisplayState = PlanDisplayState.Visible,
             FeatureBullets = new() { "bullet" },
-            Entitlements = new PlanEntitlementsDto { MaxProjects = 10 },
+            Entitlements = new PlanEntitlementsDto
+            {
+                MaxProjects = 10,
+                // Review finding #4: the two DB-19 levers round-trip alongside every other key —
+                // MaxOwnedWorkspaces = 3 (finite, non-default) and NewWorkspaceRequiresApproval =
+                // false (the non-default polarity: the catalog default is true), so a typo'd or
+                // inverted mapping in PlanService.MapEntitlements/MapEntitlementsDto would fail here.
+                MaxOwnedWorkspaces = 3,
+                NewWorkspaceRequiresApproval = false,
+            },
         };
 
     [Fact]
@@ -60,9 +69,18 @@ public class PlanServiceTests
         var created = await svc.CreateAsync(Write("pro", "Pro"));
         Assert.True(created.IsSuccess);
         Assert.Equal(10, created.Data!.Entitlements.MaxProjects);
+        Assert.Equal(3, created.Data.Entitlements.MaxOwnedWorkspaces);
+        Assert.Equal(false, created.Data.Entitlements.NewWorkspaceRequiresApproval);
 
         var list = await Svc(Ctx(db)).ListAsync();
-        Assert.Contains(list.Data!, p => p.Slug == "pro" && p.Entitlements.MaxProjects == 10);
+        Assert.Contains(
+            list.Data!,
+            p =>
+                p.Slug == "pro"
+                && p.Entitlements.MaxProjects == 10
+                && p.Entitlements.MaxOwnedWorkspaces == 3
+                && p.Entitlements.NewWorkspaceRequiresApproval == false
+        );
     }
 
     [Fact]

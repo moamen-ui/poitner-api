@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.Extensions.Configuration;
 using Pointer.API.Controllers;
 using Pointer.API.Extensions;
 using Xunit;
@@ -139,6 +140,128 @@ public class AuthRateLimitingTests
             .GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true)
             .ToList();
         Assert.Contains(rateLimits, a => a.PolicyName == "signup");
+    }
+
+    /// <summary>Review finding #1: DB-19 §3.5 — POST /api/me/workspaces has its own budget
+    /// ("workspace-create", D19.8), never shared with "signup"/"danger"/"login". A rename or
+    /// misspelling of the policy name would silently disable the limiter without failing any
+    /// other test.</summary>
+    [Fact]
+    public void CreateWorkspace_HasWorkspaceCreateRateLimit()
+    {
+        var method = typeof(MeController).GetMethod("CreateWorkspace");
+        Assert.NotNull(method);
+
+        var rateLimits = method!
+            .GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true)
+            .ToList();
+        Assert.Contains(rateLimits, a => a.PolicyName == "workspace-create");
+    }
+
+    /// <summary>Review finding #1: the read-only allowance endpoint is unthrottled by design (it
+    /// backs the dashboard's workspace switcher and is polled far more often than creation).</summary>
+    [Fact]
+    public void GetWorkspaceAllowance_HasNoRateLimit()
+    {
+        var method = typeof(MeController).GetMethod("GetWorkspaceAllowance");
+        Assert.NotNull(method);
+
+        var rateLimits = method!.GetCustomAttributes<EnableRateLimitingAttribute>(inherit: true);
+        Assert.Empty(rateLimits);
+    }
+
+    /// <summary>Review finding #1: the "workspace-create" policy itself — 1-hour fixed window,
+    /// 5-permit default (Security:RateLimits:WorkspaceCreatePerHour, appsettings.json), overridable
+    /// upward exactly like "signup"/"danger", and partitioned by identity+IP via
+    /// RateLimitingExtensions.DangerPartitionKey (not a bare per-IP floor — one identity behind a
+    /// shared NAT must not share its budget with everyone else on it).</summary>
+    [Fact]
+    public void WorkspaceCreatePolicy_DefaultsTo5PerHour_PartitionedByIdentity()
+    {
+        var o = new RateLimiterOptions();
+        RateLimitingExtensions.Configure(o);
+
+        var policy = GetPolicy(o, "workspace-create");
+        var ip = System.Net.IPAddress.Parse("10.0.0.2");
+
+        var ctxUserA = new DefaultHttpContext();
+        ctxUserA.Connection.RemoteIpAddress = ip;
+        ctxUserA.User = new System.Security.Claims.ClaimsPrincipal(
+            new System.Security.Claims.ClaimsIdentity(
+                new[] { new System.Security.Claims.Claim("sub", "user-a") },
+                "Test"
+            )
+        );
+
+        var partition = GetPartition(policy, ctxUserA);
+        Assert.Equal(
+            RateLimitingExtensions.DangerPartitionKey(ctxUserA),
+            GetPartitionKey(partition)
+        );
+
+        var limiter = CreateLimiter(partition);
+        for (var i = 0; i < 5; i++)
+            Assert.True(limiter.AttemptAcquire(1).IsAcquired);
+        Assert.False(limiter.AttemptAcquire(1).IsAcquired);
+    }
+
+    /// <summary>Review finding #5 / D19.8: the operator-facing override reaches the limiter (the
+    /// documented-but-missing appsettings.json knob was the finding — this proves the knob works).</summary>
+    [Fact]
+    public void WorkspaceCreatePolicy_HonoursConfiguredOverride()
+    {
+        var config = new ConfigurationBuilder()
+            .AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Security:RateLimits:WorkspaceCreatePerHour"] = "2",
+                }
+            )
+            .Build();
+
+        var o = new RateLimiterOptions();
+        RateLimitingExtensions.Configure(o, config);
+
+        var policy = GetPolicy(o, "workspace-create");
+        var ctx = new DefaultHttpContext();
+        ctx.Connection.RemoteIpAddress = System.Net.IPAddress.Parse("10.0.0.3");
+
+        var limiter = CreateLimiter(GetPartition(policy, ctx));
+        Assert.True(limiter.AttemptAcquire(1).IsAcquired);
+        Assert.True(limiter.AttemptAcquire(1).IsAcquired);
+        Assert.False(limiter.AttemptAcquire(1).IsAcquired);
+    }
+
+    // ── Reflection helpers for the two tests above: RateLimiterOptions.PolicyMap and
+    // DefaultRateLimiterPolicy.GetPartition are internal, so a registered policy's actual limiter
+    // (PermitLimit/Window/partition key) can only be reached through the same public entry point
+    // ASP.NET Core's middleware uses — Configure(...) — and a small amount of reflection. This
+    // exercises the real, wired-up policy rather than re-deriving expected values from the
+    // implementation, which is what the review finding asked for. ──
+
+    private static object GetPolicy(RateLimiterOptions o, string policyName)
+    {
+        var map = typeof(RateLimiterOptions)
+            .GetProperty("PolicyMap", BindingFlags.NonPublic | BindingFlags.Instance)!
+            .GetValue(o)!;
+        var indexer = map.GetType().GetProperty("Item")!;
+        return indexer.GetValue(map, new object[] { policyName })!;
+    }
+
+    private static object GetPartition(object policy, HttpContext ctx) =>
+        policy.GetType().GetMethod("GetPartition")!.Invoke(policy, new object[] { ctx })!;
+
+    private static string GetPartitionKey(object partition)
+    {
+        var defaultKey = partition.GetType().GetProperty("PartitionKey")!.GetValue(partition)!;
+        return (string)defaultKey.GetType().GetProperty("Key")!.GetValue(defaultKey)!;
+    }
+
+    private static RateLimiter CreateLimiter(object partition)
+    {
+        var factory = partition.GetType().GetProperty("Factory")!.GetValue(partition)!;
+        var key = partition.GetType().GetProperty("PartitionKey")!.GetValue(partition)!;
+        return (RateLimiter)factory.GetType().GetMethod("Invoke")!.Invoke(factory, new[] { key })!;
     }
 
     /// <summary>

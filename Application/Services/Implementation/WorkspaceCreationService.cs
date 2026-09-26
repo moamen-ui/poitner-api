@@ -40,8 +40,9 @@ public class WorkspaceCreationService(
         CreateWorkspaceRequest request
     )
     {
-        // 1. Name — the rename rules, verbatim (task 6).
-        if (WorkspaceNameRules.Validate(request.Name, out var trimmed) is string nameError)
+        // 1. Name — the rename rules, verbatim (task 6). Null-conditional: a null request (e.g. a
+        //    JSON body of `null`) must surface as a 400 validation error, not a NullReferenceException.
+        if (WorkspaceNameRules.Validate(request?.Name, out var trimmed) is string nameError)
             return Result<CreateWorkspaceResponse>.Failure(nameError);
 
         // 2. §3.3 gate (WorkspaceLifecycleGuard rule on the caller's CURRENT workspace + the two
