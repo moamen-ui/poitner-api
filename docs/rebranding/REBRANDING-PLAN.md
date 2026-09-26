@@ -50,7 +50,7 @@ for explicit approval** before any edit.
 
 | # | Question | Why it matters |
 |---|---|---|
-| Q1 | **New product name?** (as written in marketing copy, e.g. "Pointkit") | Drives every derived form in §2 |
+| Q1 | **New product name?** (as written in marketing copy, e.g. "Pointkit") | Drives every derived form in §2. **Candidate under discussion, not final, not an answer:** owner is leaning toward "Pinsay" as of 2026-09-26 — recorded here only; §2 stays blank until Q1 is actually answered and echoed back per §0 rule 1 |
 | Q2 | Preferred **one-word lowercase token** for code (e.g. `pointkit`)? If the name is two words, do you want `pointkit` or `point-kit` in identifiers? | Custom-element tag, npm package, CSS prefix, DB name. A hyphen here changes ~40 identifiers |
 | Q3 | **Legal/company name** to appear in LICENSE, extension listing, and email footers | Often differs from the product name |
 | Q4 | Short **tagline** (≤132 chars, for the Chrome Web Store description) | Store limit is hard |
@@ -301,6 +301,10 @@ Change it and EF sees an **unapplied migration** and re-runs it against producti
 | `20260923062150_BackfillUsersEmailVerifiedAt` (DB-14, data migration/grandfathering) | 2026-09-23 | deployed |
 | `20260923073100_AddUsageDailyAndWidgetInstalledIndex` (DB-15; `usage_daily`, `ux_usage_events_widget_installed_per_project`, `ux_usage_daily_day_owner_type`) | 2026-09-23 | just landed on `main` (`2eabe72`/`b2da554`/`a0363c6`) — verify deploy status before treating it as applied |
 | `20260923102053_AddOperatorMfa` (R5-61; `user_recovery_codes` table, `users.totp_secret`, `users.totp_enabled_at`) | 2026-09-23, **branch `feat/r5-61-operator-mfa` only — not on `main`, not deployed** | not deployed — freeze the id on merge; do not rename the class/file pre-emptively while still on a feature branch |
+| `20260926103502_AddPlanEntitlementsWorkspaceLevers` (DB-19; adds `PlanEntitlements.MaxOwnedWorkspaces`/`NewWorkspaceRequiresApproval` columns) | 2026-09-26, **merged to `main` (`397f3e2`)** | merged, not yet in a `DEPLOY.md` contract label as of this sync — treat as **not yet deployed**; freeze on next deploy |
+| `20260926124759_AddBillingV1SubscriptionAndInviteColumns` (DB-20; adds ~9 lifecycle columns to `subscriptions` — plan-change/comp/grace tracking — and 3 comp-related columns to `invites`) | 2026-09-26, **branch `feat/db-20-billing-v1` only — not on `main`, not deployed** | not deployed — freeze the id on merge |
+| `20260926125724_AddBillingLedgerAndDiscountCodes` (DB-20; adds `discount_codes`, `discount_code_plans`, `discount_redemptions`, `billing_payments` tables) | 2026-09-26, **branch `feat/db-20-billing-v1` only — not on `main`, not deployed** | not deployed — freeze the id on merge |
+| `20260926130011_AddBillingPaymentsAppendOnlyTrigger` (DB-20; append-only trigger on `billing_payments`, same pattern as `audit_events`' DB-12 trigger) | 2026-09-26, **branch `feat/db-20-billing-v1` only — not on `main`, not deployed** | not deployed — freeze the id on merge |
 
 None of the migration ids added above spell "pointer" — they are candidates for the "leave alone,
 allowlist" branch of the procedure below, not the "rename" branch, unless the whole
@@ -513,6 +517,34 @@ Verified 2026-09-23: `orval.config.ts` `filters.tags` already lists `Audit`, `Id
 next once-per-phase sync is what actually regenerates the client against these; this plan only
 records that the gate is open.
 
+**New endpoints landed 2026-09-26 (DB-19, merged to `main` `cc1a70f`; DB-20, branch
+`feat/db-20-billing-v1` only, not merged) — none carry the brand in the route itself; listed for the
+same reason as the 2026-09-23 batch above:**
+
+- `POST api/me/workspaces` (`MeController.cs`, tag `Me`, DB-19) — creates another workspace for the
+  signed-in Workspace Admin, gated by the `MaxOwnedWorkspaces`/`NewWorkspaceRequiresApproval`
+  entitlement levers (§5.3) and rate-limited under the `workspace-create` policy (§5.3)
+- `GET api/me/workspaces/allowance` (`MeController.cs`, tag `Me`, DB-19) — read-only allowance
+  (owned/max/requiresApproval/canCreate) for the dashboard's workspace switcher
+- `GET api/admin/billing`, `GET api/admin/billing/payments`, `POST api/admin/billing/quote`,
+  `POST api/admin/billing/request`, `DELETE api/admin/billing/request` (`BillingController.cs`, new
+  tag `Billing`, DB-20, not merged) — the workspace's own billing surface
+- `GET api/admin/discount-codes`, `GET api/admin/discount-codes/{id}`,
+  `POST api/admin/discount-codes`, `PATCH api/admin/discount-codes/{id}`,
+  `GET api/admin/discount-codes/{id}/redemptions` (`DiscountCodesController.cs`, new tag
+  `DiscountCodes`, DB-20, not merged)
+- `GET api/admin/tenants/{workspaceId}/billing`, `POST api/admin/tenants/{workspaceId}/payments`,
+  `POST api/admin/tenants/{workspaceId}/payments/{paymentId}/void`,
+  `DELETE api/admin/tenants/{workspaceId}/billing/request`,
+  `DELETE api/admin/tenants/{workspaceId}/comp` (`TenantsController.cs`, tag `Tenants`, already
+  gated, DB-20, not merged) — granting comp is folded into the existing `POST api/admin/tenants`
+  plan-change body (`CompReason`/`CompEndsAt`), only *ending* comp gets a dedicated route
+
+Verified 2026-09-26 against `feat/db-20-billing-v1`: `orval.config.ts` `filters.tags` already lists
+`Billing` and `DiscountCodes` — no gating gap. Note these two tags exist only on the DB-20 branch as
+of this sync; they are not yet on `main`, so the dashboard-agent cannot regenerate against them until
+DB-20 merges and deploys.
+
 ### 5.2 `pointer-dashboard` (one app today — React; Angular and Vue retired)
 
 Since 2026-09-15 only `react/` is maintained. Angular and Vue were retired at tag `last-three-apps` /
@@ -525,7 +557,7 @@ measured 2026-09-08, i.e. **before** the retirement; not recomputed here.
 | App | Files | Notable |
 |---|---|---|
 | `angular/` | 39 | **Removed 2026-09-15 — retired; frozen at tag `last-three-apps` / branch `legacy/angular-vue`; the rename does not need to touch it unless that branch is ever revived — anything deployed from it was replaced by `deploy-dashboards.sh`, which removes `dashboard/angular` on the VM.** Was: `@moamen-ui/pointer-angular` (74 import sites across all three apps), `core/pointer-dogfood/pointer-dogfood.service.ts` (dir + class + `WIDGET_TAG`), `shared/install-guide/*` (emits the install snippets), storage keys, `environment*.ts` |
-| `react/` | 40 | `@moamen-ui/pointer-react`, `index.html` `<title>Pointer Admin</title>`, `.env.development`/`.env.production` (`VITE_API_BASE=https://api.pointer.moamen.work`), `src/lib/storage.ts`. **R4-01 (in progress, not yet merged as of 2026-09-22):** new Settings section "Comment fields" and i18n namespace `commentFields` — brand-neutral names; re-check on merge, since this agent has not seen the diff |
+| `react/` | 40 | `@moamen-ui/pointer-react`, `index.html` `<title>Pointer Admin</title>`, `.env.development`/`.env.production` (`VITE_API_BASE=https://api.pointer.moamen.work`), `src/lib/storage.ts`. **R4-01 (in progress, not yet merged as of 2026-09-22):** new Settings section "Comment fields" and i18n namespace `commentFields` — brand-neutral names; re-check on merge, since this agent has not seen the diff. **DB-19 (merged, caller-reported 2026-09-26 — separate `pointer-dashboard` repo, not this checkout, not independently re-verified against source here):** new `NewWorkspaceDialog` component + its i18n keys (workspace-switcher "+ New workspace" flow, consuming `POST api/me/workspaces` / `GET api/me/workspaces/allowance`) — brand-neutral component/key names, no rename needed beyond the existing package/env-var/storage-key rows above |
 | `vue/` | 44 | **Removed 2026-09-15 — retired; frozen at tag `last-three-apps` / branch `legacy/angular-vue`; the rename does not need to touch it unless that branch is ever revived — anything deployed from it was replaced by `deploy-dashboards.sh`, which removes `dashboard/vue` on the VM.** Was: `@moamen-ui/pointer-vue`, same `<title>`, same env files, `src/lib/storage.ts`, `src/lib/demoSession.ts` |
 | Root | — | `AGENTS.md`, `CLAUDE.md`, `README.md`, `.gitignore` (`.pointer/`), `.pointer/` |
 
@@ -569,11 +601,30 @@ measured 2026-09-08, i.e. **before** the retirement; not recomputed here.
 | Response header | `X-Email-Verification-Required` | `API/Auth/RequireVerifiedEmailFilter.cs:111`, exposed via CORS `API/Program.cs:156,164` |
 | Audit action-string namespace | `Common/AuditActions.cs` constants — `auth.*`, `member.*`, `identity.*`, `impersonation.*`, `tenant.*`, … (dotted, lower-snake segments) | `Application/Common/AuditActions.cs` — brand-neutral, no rename needed |
 | Usage event-type namespace | `Common/UsageEventTypes.cs` — activation/funnel event identifiers (DB-15) | `Application/Common/UsageEventTypes.cs` — brand-neutral, no rename needed |
-| Message-key namespace | `Resources/MessageKeys.cs` — 194 constants as of 2026-09-23 | `Application/Resources/MessageKeys.cs` — brand-neutral, no rename needed |
+| Message-key namespace | `Resources/MessageKeys.cs` — 194 constants as of 2026-09-23; **count now stale** — DB-19/DB-20 added at least `Workspace.OwnedLimitReached` plus billing/discount-code message keys; not recounted here |
 
 **On branch `feat/r5-61-operator-mfa` (not merged):** new tables `user_recovery_codes`,
 `users.totp_secret`, `users.totp_enabled_at` — none brand-carrying (verified by grep against the
 migration `20260923102053_AddOperatorMfa`, §4.1).
+
+**Added 2026-09-26 (DB-19, merged to `main` `cc1a70f`; DB-20, branch `feat/db-20-billing-v1` only,
+not merged) — none of the rows below spell "pointer"; listed for the same "surface it" reason as the
+2026-09-23 batch above:**
+
+| Kind | Value | Defined in |
+|---|---|---|
+| Entitlement keys (DB-19) | `MaxOwnedWorkspaces` (int, -1 = unlimited, 0 = endpoint disabled, default 1), `NewWorkspaceRequiresApproval` (bool, restrictive-polarity, default true) | `Domain/ValueObjects/PlanEntitlements.cs`, `Application/Common/EntitlementCatalog.cs`, `Application/DTOs/Plan/PlanEntitlementsDto.cs` — brand-neutral, no rename needed |
+| Rate-limit policy name (DB-19) | `"workspace-create"` — 5/h per identity+IP on `POST api/me/workspaces` | `API/Extensions/RateLimitingExtensions.cs:117-131`, `API/Controllers/MeController.cs:195` |
+| Config key (DB-19) | `Security:RateLimits:WorkspaceCreatePerHour` | `API/Extensions/RateLimitingExtensions.cs:122` |
+| Audit action (DB-19) | `workspace.created` (`AuditActions.WorkspaceCreated`) | `Application/Common/AuditActions.cs:100` |
+| Message key (DB-19) | `Workspace.OwnedLimitReached` — "the caller already owns MaxOwnedWorkspaces workspaces" | `Application/Resources/MessageKeys.cs:222-223` |
+| Seeder / app-setting key (DB-19) | `legacy_workspace_levers_backfilled` — one-time backfill marker so `AdminSeeder` only defaults existing plans' new levers once | `Application/Services/Interfaces/ISettingsService.cs:50`, `API/Seed/AdminSeeder.cs:335-340` |
+| Config keys (DB-20, `ISettingsService`, DB-stored `app_settings` rows) | `billing_grace_days` (default 7), `billing_reminder_days` (default 3) | `Application/Services/Interfaces/ISettingsService.cs:58-62` |
+| Audit actions (DB-20) | `billing.plan_requested`, `billing.request_cancelled`, `billing.request_rejected`, `billing.payment_recorded`, `billing.payment_voided`, `billing.comp_ended`, `billing.past_due`, `billing.downgraded`, `discount_code.created`, `discount_code.updated` | `Application/Common/AuditActions.cs:163-172` |
+| Hosted job (DB-20) | `BillingPeriodJob` — the period-boundary job that sends the three billing e-mails and drives grace/downgrade | `API/Hosted/BillingPeriodJob.cs:12` |
+| Swagger/orval tags (DB-20, branch-only) | `Billing` (`api/admin/billing/*`), `DiscountCodes` (`api/admin/discount-codes/*`) — both already present in `orval.config.ts` `filters.tags` on this branch as of 2026-09-26, verified against `feat/db-20-billing-v1` | `API/Controllers/Admin/BillingController.cs`, `API/Controllers/Admin/DiscountCodesController.cs`, `orval.config.ts` |
+| DB tables (DB-20, not yet on `main`) | `discount_codes`, `discount_code_plans`, `discount_redemptions`, `billing_payments` — plus ~9 new lifecycle columns on `subscriptions` and 3 new comp-related columns on `invites` | migrations `20260926124759_AddBillingV1SubscriptionAndInviteColumns`, `20260926125724_AddBillingLedgerAndDiscountCodes` (§4.1) — table/column names brand-neutral, no rename needed |
+| Billing e-mail templates (DB-20, en/ar, 3 kinds) | `BillingEmailKind.Reminder`/`PastDue`/`Downgraded` → subjects interpolate `{workspaceName}` (English: "…'s plan renews soon" / "…'s payment is past due" / "… moved to the Free plan"; Arabic equivalents) — no literal brand string in the subject or body, `productName` is passed in as a parameter from the branding row (§3.1), so these follow the existing branding-aware pattern and need no rename beyond what §3.1 already covers | `Application/Common/BillingEmails.cs`, `Application/Common/Email/EmailTemplateBuilder.cs:875-1040` (`BillingRenewalReminder`, `BillingPastDue`, `BillingDowngraded`) |
 
 ### 5.4 Skills (served + installed)
 
