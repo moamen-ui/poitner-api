@@ -410,6 +410,80 @@ describe('mcp: tools handlers and helpers', () => {
     }
   });
 
+  test('handleCommitAndMark: single-commit style (default/no capture-config) PATCHes every id with commitSha', async () => {
+    childProcess.spawnSync('git', ['init'], { cwd: tmpDir });
+    childProcess.spawnSync('git', ['config', 'user.name', 'Test User'], { cwd: tmpDir });
+    childProcess.spawnSync('git', ['config', 'user.email', 'test@example.com'], { cwd: tmpDir });
+
+    mkdirSync(join(tmpDir, 'src'), { recursive: true });
+    writeFileSync(join(tmpDir, 'src/b.txt'), 'content b\n', 'utf8');
+
+    const patchedBodies: any[] = [];
+
+    const stub = await stubServer((req, res) => {
+      if (req.url?.startsWith('/api/branding')) {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data: { productName: 'Pointer' } }));
+        return;
+      }
+      if (req.url?.startsWith('/api/admin/projects')) {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data: [] }));
+        return;
+      }
+      // No /api/projects/:key/capture-config stub — loadProjectContext's fetch fails and falls
+      // back to the default commitStyle ('Single'), exactly like a project with no capture config.
+      if (req.method === 'PATCH' && req.url?.startsWith('/api/comments/')) {
+        let body = '';
+        req.on('data', (c: any) => (body += c));
+        req.on('end', () => {
+          patchedBodies.push(JSON.parse(body || '{}'));
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.end(JSON.stringify({ isSuccess: true }));
+        });
+        return;
+      }
+      if (req.url === '/api/events') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true }));
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+
+    try {
+      const ctx: McpContext = {
+        cwd: tmpDir,
+        server: stub.url,
+        project: 'test-project',
+        token: 'jwt-token',
+      };
+
+      const res = await handleCommitAndMark(
+        { ids: [10, 11], reply: 'Applied both', files: ['src/b.txt'] },
+        ctx,
+      );
+
+      const logRes = childProcess.spawnSync('git', ['rev-parse', 'HEAD'], {
+        cwd: tmpDir,
+        encoding: 'utf8',
+      });
+      const sha = logRes.stdout.trim();
+
+      assert.equal(res.length, 2);
+      assert.equal(patchedBodies.length, 2);
+      for (const body of patchedBodies) {
+        // The bug: this path used to omit commitSha entirely, so `pointer status --deployed`
+        // could never flip these comments to Live even after the fix shipped.
+        assert.equal(body.commitSha, sha);
+        assert.ok(sha.length > 0);
+      }
+    } finally {
+      await stub.close();
+    }
+  });
+
   test('handleResolveSource: returns no-manifest when absent, resolves path when present', async () => {
     const ctx: McpContext = {
       cwd: tmpDir,

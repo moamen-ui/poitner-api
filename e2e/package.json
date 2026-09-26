@@ -10,6 +10,7 @@
     "probe": "node scripts/probe-visibility.mjs",
     "widget": "playwright test widget/widget.spec.ts",
     "audit": "node scripts/audit.mjs",
+    "test:unit": "node --test scripts/audit.unit.test.mjs",
     "e2e": "bash run-e2e.sh"
   },
   "devDependencies": {

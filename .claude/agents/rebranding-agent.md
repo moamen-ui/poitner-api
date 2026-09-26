@@ -38,7 +38,7 @@ Work there, commit there, **never push**, and leave the worktree in place for th
 | New config key or `appsettings` section | §4.7 if it sits under the `Pointer` section (renaming that section silently disables the feature); §5.3 otherwise |
 | New domain, subdomain or host block | §1.2 answers, §5.3 CORS allow-list, the `Caddyfile` row |
 | New served file under `API/wwwroot/` | §5.3 — and flag whether `Program.cs`'s `injectedFiles` set and the Caddy `@widget` matcher list it literally |
-| New brand string in the dashboard apps | §5.2 — remember there are **three** apps at parity (angular, react, vue) |
+| New brand string in the dashboard app | §5.2 — the React app (`pointer-dashboard/react`) is the only maintained dashboard; Angular and Vue are retired to tag `last-three-apps` / branch `legacy/angular-vue` |
 
 ## Workflow
 

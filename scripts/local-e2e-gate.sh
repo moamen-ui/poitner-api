@@ -22,6 +22,24 @@
 #                      debugging). Default: always tear down.
 #   E2E_GATE_SKIP_INSTALL=1  Skip `npm ci`/`playwright install`/cli build (reuse whatever is
 #                      already installed in the scratch copy from a previous run).
+#   E2E_GATE_WITH_AI=1 Opt-in, PAID: appends `--with-ai` to the `run-e2e.sh --nightly --ci`
+#                      invocation below, so Layer B (TC1-TC6, e2e/ai/run-cases.mjs) runs against
+#                      real `claude`/`opencode` invocations, not just the zero-AI phases. Default
+#                      behaviour (this var unset) is unchanged — no ai phase, no extra cost. The
+#                      orchestrator decides when to set this; never set it to run the paid suite
+#                      unprompted.
+#   E2E_AI_TOOLS       Pass-through to e2e/ai/run-cases.mjs's own `TOOLS` list (comma-separated,
+#                      default `claude-code,opencode-glm,antigravity`) — only read when
+#                      E2E_GATE_WITH_AI=1. e.g. `E2E_AI_TOOLS=claude-code` to run only one tool.
+#   E2E_AI_CASES       Pass-through to e2e/ai/run-cases.mjs's own case filter (comma-separated case
+#                      ids from e2e/ai/cases/manifest.json, e.g. `tc3,tc6`) — only read when
+#                      E2E_GATE_WITH_AI=1. Unset (default) runs every case. Combine with
+#                      E2E_AI_TOOLS for a cheap targeted repro instead of the full TC1-TC6 sweep
+#                      across every tool, e.g.:
+#                        E2E_GATE_WITH_AI=1 E2E_AI_TOOLS=claude-code,opencode-glm \
+#                          E2E_AI_CASES=tc3,tc6 bash scripts/local-e2e-gate.sh <worktree>
+#                      The full AI suite is the same invocation with both vars unset:
+#                        E2E_GATE_WITH_AI=1 bash scripts/local-e2e-gate.sh <worktree>
 #
 # Exit status: non-zero if any phase fails (matching run-e2e.sh's own semantics); the phase-by-phase
 # table from e2e/state/report.md is always printed before exiting, pass or fail.
@@ -248,10 +266,44 @@ teardown() {
 }
 trap teardown EXIT
 
-echo "==> Running: bash run-e2e.sh --nightly --ci   (isolated project '${GATE_PROJECT}')"
+# --- Opt-in AI phase (E2E_GATE_WITH_AI=1) --------------------------------------------------------
+# Off by default — RUN_E2E_ARGS is exactly `--nightly --ci` unless the caller opts in, matching
+# every previous invocation of this script byte-for-byte.
+RUN_E2E_ARGS=(--nightly --ci)
+if [ "${E2E_GATE_WITH_AI:-0}" = "1" ]; then
+  RUN_E2E_ARGS+=(--with-ai)
+
+  # e2e/ai/run-cases.mjs reads E2E_AI_TOOLS directly from its own environment (default
+  # 'claude-code,opencode-glm,antigravity' if unset) — nothing to translate here, just make sure a
+  # caller-provided value (e.g. `E2E_AI_TOOLS=claude-code scripts/local-e2e-gate.sh`) is genuinely
+  # exported into the run-e2e.sh subshell below rather than left as a shell-local assignment that
+  # `set -u` would otherwise trip on further down.
+  export E2E_AI_TOOLS="${E2E_AI_TOOLS:-claude-code,opencode-glm,antigravity}"
+
+  # The ai phase execs `claude` / `opencode` as real child processes (e2e/ai/harness.mjs). They are
+  # ordinary host-PATH binaries, not anything this script installs, so resolve them against the
+  # CALLING shell's PATH now and fail with a clear, upfront message rather than letting each tool
+  # fail its first invocation deep inside run-cases.mjs's per-tool try/catch (which degrades to a
+  # silent per-tool SKIP in report.md — fine for "not installed", misleading for "PATH got clobbered
+  # by this script"). `export PATH` makes the resolution explicit rather than incidental to however
+  # bash happened to inherit it.
+  export PATH
+  MISSING_AI_TOOLS=()
+  for bin in claude opencode; do
+    command -v "${bin}" >/dev/null 2>&1 || MISSING_AI_TOOLS+=("${bin}")
+  done
+  if [ ${#MISSING_AI_TOOLS[@]} -gt 0 ]; then
+    echo "==> WARNING: E2E_GATE_WITH_AI=1 but not found on PATH: ${MISSING_AI_TOOLS[*]}" >&2
+    echo "    (those tools will fail their first invocation and be SKIPPED for the rest of the ai phase — see e2e/ai/harness.mjs)" >&2
+  fi
+
+  echo "==> E2E_GATE_WITH_AI=1 — including the paid ai phase (E2E_AI_TOOLS=${E2E_AI_TOOLS})"
+fi
+
+echo "==> Running: bash run-e2e.sh ${RUN_E2E_ARGS[*]}   (isolated project '${GATE_PROJECT}')"
 (
   cd "${SCRATCH}/e2e"
-  bash run-e2e.sh --nightly --ci
+  bash run-e2e.sh "${RUN_E2E_ARGS[@]}"
 ) 2>&1 | tee "${RUN_LOG}"
 RUN_CODE=${PIPESTATUS[0]}
 

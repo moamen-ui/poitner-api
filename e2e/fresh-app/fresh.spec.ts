@@ -205,9 +205,12 @@ test('R2-00-01 — fresh-app: vite', async ({ page }) => {
     createdProjectKey = initRes.json?.project?.key;
 
     const files = initRes.json?.files || [];
-    for (const reqFile of ['.env', 'index.html', '.pointer/config.json', '.pointer/credentials.env', '.gitignore']) {
+    for (const reqFile of ['.env.development', 'index.html', '.pointer/config.json', '.pointer/credentials.env', '.gitignore']) {
       expect(files).toContain(reqFile);
     }
+    // Never the shared `.env` (pointer-init.md Scope rule 2) — a plain `.env` is loaded for every
+    // configuration including production.
+    expect(existsSync(join(appDir, '.env'))).toBe(false);
 
     // 4. Assert files in app
     const indexHtml = await readFile(join(appDir, 'index.html'), 'utf8');
@@ -216,11 +219,12 @@ test('R2-00-01 — fresh-app: vite', async ({ page }) => {
     expect(startMarkers.length).toBe(1);
     expect(endMarkers.length).toBe(1);
 
-    const envContent = await readFile(join(appDir, '.env'), 'utf8');
+    const envContent = await readFile(join(appDir, '.env.development'), 'utf8');
     expect(envContent).not.toContain('VITE_POINTER_ENABLED');
     expect(envContent).toContain(`VITE_POINTER_SERVER=${SERVER}`);
     expect(envContent).toContain(`VITE_POINTER_PROJECT=${createdProjectKey}`);
-    // No environment in .env: the server resolves it from the page origin (only `--environment` pins one).
+    // No environment in .env.development: the server resolves it from the page origin (only
+    // `--environment` pins one).
     expect(envContent).not.toContain('VITE_POINTER_ENV');
 
     // Run doctor --json
@@ -1148,15 +1152,17 @@ test('R1-02-01 — init-vite-no-ai', async () => {
     // the widget's default (pointer-init.md: "Do NOT write a source-attr attribute"), so init never
     // writes it. This used to assert the opposite — stale since the pre-source-attr-default days.
 
-    // .env: exactly ONE of each key. A second occurrence is the failure mode that matters here —
-    // re-running init must not append a duplicate the bundler then resolves unpredictably.
-    const env = await readFile(join(appDir, '.env'), 'utf8');
+    // .env.development: exactly ONE of each key. A second occurrence is the failure mode that
+    // matters here — re-running init must not append a duplicate the bundler then resolves
+    // unpredictably. Never the shared `.env` (pointer-init.md Scope rule 2).
+    expect(existsSync(join(appDir, '.env'))).toBe(false);
+    const env = await readFile(join(appDir, '.env.development'), 'utf8');
     for (const [key, value] of [
       ['VITE_POINTER_SERVER', SERVER],
       ['VITE_POINTER_PROJECT', createdProjectKey],
     ]) {
       const hits = env.split('\n').filter((l) => l.trim().startsWith(`${key}=`));
-      expect(hits, `${key} must appear exactly once in .env`).toHaveLength(1);
+      expect(hits, `${key} must appear exactly once in .env.development`).toHaveLength(1);
       expect(hits[0].trim()).toBe(`${key}=${value}`);
     }
 

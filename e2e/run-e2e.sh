@@ -82,8 +82,14 @@ elif [ "$TIER" = "nightly" ]; then
 elif [ ${#FLAGS[@]} -eq 0 ] && [ ${#ONLY[@]} -eq 0 ]; then
   # Default behavior
   FLAGS+=("reset" "seed" "probe" "widget")
-  [ "$WITH_AI" = "1" ] && FLAGS+=("ai")
 fi
+
+# --with-ai is orthogonal to tier — it used to only take effect on the untiered default branch
+# above (its check lived inside that `elif`), so `run-e2e.sh --nightly --with-ai` silently ran
+# without the ai phase at all. Checked once, after tier resolution, so it appends regardless of
+# which branch above ran. scripts/local-e2e-gate.sh's E2E_GATE_WITH_AI=1 relies on this working
+# together with --nightly.
+[ "$WITH_AI" = "1" ] && FLAGS+=("ai")
 
 if [ "$LIST" = "1" ]; then
   # `set -u` is on, and FLAGS is legitimately empty for a bare `--only` run (no phases, just
@@ -288,7 +294,26 @@ run_phase "upgrade" "( if [ -n \"\${LEGACY_REF:-}\" ]; then node scripts/upgrade
 run_phase "429" "( E2E_429=1 bash scripts/pw.sh api 'rate-limits\\.spec\\.mjs' && E2E_429=1 bash scripts/pw.sh api 'login-with-invite-429\\.spec\.mjs' )"
 
 if [[ " ${FLAGS[*]:-} " =~ " ai " ]]; then
+  # The AI harness publishes the branch's CLI build to this stack's Verdaccio so `npx pointer-feedback`
+  # resolves to the build under test — the registry phase stops Verdaccio when it finishes, so start it
+  # again here (same compose project/files as the registry phase) and stop it afterwards.
+  #
+  # ai/run-cases.mjs also reads E2E_AI_CASES directly (comma-separated case ids, e.g.
+  # `E2E_AI_CASES=tc3,tc6`) — unset (the default) runs every case in ai/cases/manifest.json, same
+  # as before this existed. Combined with E2E_AI_TOOLS below, this is the cheap targeted repro: e.g.
+  # `E2E_GATE_WITH_AI=1 E2E_AI_TOOLS=claude-code,opencode-glm E2E_AI_CASES=tc3,tc6 bash
+  # scripts/local-e2e-gate.sh <worktree>` runs only TC3+TC6 for both real tools instead of the full
+  # TC1-TC6 sweep. The full AI suite (every case, every tool) is just E2E_GATE_WITH_AI=1 with
+  # neither var set.
+  AI_COMPOSE_ARGS=()
+  [ -n "${E2E_COMPOSE_PROJECT:-}" ] && AI_COMPOSE_ARGS+=(-p "${E2E_COMPOSE_PROJECT}")
+  if [ -n "${E2E_COMPOSE_FILES:-}" ]; then
+    IFS=':' read -r -a _ai_compose_files <<< "${E2E_COMPOSE_FILES}"
+    for _f in "${_ai_compose_files[@]}"; do AI_COMPOSE_ARGS+=(-f "$_f"); done
+  fi
+  docker compose "${AI_COMPOSE_ARGS[@]}" up -d verdaccio || echo "verdaccio failed to start for the ai phase" >&2
   run_phase "ai" "node ai/run-cases.mjs && node scripts/audit.mjs"
+  docker compose "${AI_COMPOSE_ARGS[@]}" stop verdaccio || true
 else
   node scripts/lib/report.mjs phase "ai" "SKIP" "0s" "Skipped by tier/flags"
 fi

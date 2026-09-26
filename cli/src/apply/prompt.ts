@@ -6,35 +6,18 @@ import type {
   AiRuleApplyDto,
 } from './types.js';
 
-export const AI_RULES_PRECEDENCE_TEXT = `## 🛡️ MANDATORY: AI RULES PRECEDENCE & HIERARCHY
+export const AI_RULES_PRECEDENCE_TEXT = `## 🛡️ AI RULES PRECEDENCE & HIERARCHY
 
 Active AI rules (\`aiRules\`) are attached to each item in this prompt and to the comment detail (\`pointer get <id> --json\`).
+Read every active rule for an item before editing any file for it: the rules are the team's conventions for how the edit must be made.
 
-> **CRITICAL INSTRUCTION FOR ALL AI CODING AGENTS:**
-> You are **strictly forbidden** from generating code, applying edits, or modifying any file until you have read and analyzed all active rules attached to the comment being worked on.
-
-### Strict 3-Tier Precedence Order
-
-| Priority | Scope | Author / Authority | Purpose & Authority |
+| Priority | Scope | Set by | Covers |
 |---|---|---|---|
-| **Priority 1 (Highest)** | **Workspace** | Workspace Admin | Global architectural guidelines, styling standards (e.g. Tailwind conventions, design tokens), coding rules, and repository constraints across the entire workspace. |
-| **Priority 2 (High)** | **Project** | Project Admin | Project-specific component patterns, directory conventions, and repository standards. Must fully comply with Workspace rules. |
-| **Priority 3 (Lowest)** | **Personal** | Developer (Comment Author) | Personal style preferences applying **only** to comments authored by this specific developer. |
+| **1 (highest)** | **Workspace** | Workspace admin | Architectural guidelines, styling standards (e.g. Tailwind conventions, design tokens), coding rules, and repository constraints across the whole workspace. |
+| **2** | **Project** | Project admin | Project-specific component patterns, directory conventions, and repository standards, within the Workspace rules. |
+| **3 (lowest)** | **Personal** | The comment's author | Personal style preferences, applying only to comments that developer authored. |
 
-### ⛔ Strict Non-Override Guarantee (Zero Exceptions)
-
-1. **Personal rules CANNOT override, relax, negate, contradict, or loosen Workspace or Project rules.**
-   - *Example:* If a Workspace or Project rule specifies using Tailwind utility classes or strict typing, and a Personal rule asks for inline styles or looser typing, the **Workspace/Project rule STRICTLY GOVERNS**.
-   - Any part of a Personal rule that contradicts or bypasses a higher-tier rule **MUST BE COMPLETELY DISREGARDED**.
-2. **Project rules CANNOT override Workspace rules.**
-   - If a Project rule conflicts with a Workspace rule, the **Workspace rule STRICTLY GOVERNS**.
-3. **Pre-Implementation Verification Checklist:**
-   Before editing any file, verify in your context:
-   - [ ] Read all active \`aiRules\` for the target comment.
-   - [ ] Confirm Workspace rules (Priority 1) are active as mandatory global constraints.
-   - [ ] Confirm Project rules (Priority 2) conform to Workspace rules.
-   - [ ] Confirm Personal rules (Priority 3) do NOT contradict Workspace or Project rules.
-   - [ ] Implement the edit honoring this exact hierarchy.`;
+A lower tier never overrides, relaxes, or contradicts a higher one, because admins set Workspace and Project rules for the whole team while a Personal rule is one developer's preference. When a Personal rule conflicts with a Project or Workspace rule, or a Project rule with a Workspace rule, follow the higher tier and disregard only the conflicting part of the lower rule. For example, if a Workspace rule requires Tailwind utility classes or strict typing and a Personal rule asks for inline styles or looser typing, use Tailwind classes and strict typing.`;
 
 function formatEnvironment(env: number | string): string {
   if (env === 1 || env === '1' || String(env).toLowerCase() === 'local') return 'Local';

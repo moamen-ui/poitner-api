@@ -335,7 +335,13 @@ export async function startStaticServer(dir, port = PREVIEW_PORT) {
  */
 export async function startVitePreview(dir, port = PREVIEW_PORT) {
   await execFileAsync('npm', ['install'], { cwd: dir });
-  await execFileAsync('npm', ['run', 'build'], { cwd: dir });
+  // `injectVite` writes the widget's keys to `.env.development` (never the shared `.env` —
+  // pointer-init.md Scope rule 2), which Vite only loads when `mode` is "development". A plain
+  // `vite build` defaults to "production" and would leave the `%VITE_POINTER_*%` placeholders
+  // unsubstituted — correct for a real production build, but this harness needs the widget
+  // mounted to prove the fresh install actually works, exactly like a developer previewing their
+  // own build locally would run `vite build --mode development`.
+  await execFileAsync('npm', ['run', 'build', '--', '--mode', 'development'], { cwd: dir });
 
   const child = spawn(
     'npx',

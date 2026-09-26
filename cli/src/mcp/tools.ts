@@ -615,6 +615,10 @@ export async function handleCommitAndMark(
           reply,
           appliedByLabel,
           commitUrl,
+          // Same reason as the separate-style paths above: without the raw sha, `pointer status
+          // --deployed` can never test this comment for ancestry against a deployed build, so it
+          // stays "applied" forever even once the fix ships.
+          commitSha: sha,
           aiTool: tool || undefined,
           aiModel: model || undefined,
         },

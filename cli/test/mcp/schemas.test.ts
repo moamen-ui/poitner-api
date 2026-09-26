@@ -67,7 +67,7 @@ test('mcp: schema properties match contract table exactly', () => {
 
 test('mcp: documented enums and constraints match contract', () => {
   const statusEnum = [...(TOOL_POINTER_SET_STATUS.inputSchema.properties.status.enum || [])];
-  assert.deepEqual(statusEnum.sort(), ['applied', 'archived', 'open', 'ready']);
+  assert.deepEqual(statusEnum.sort(), ['archived', 'open', 'ready']);
 
   const listCommentsProps = TOOL_POINTER_LIST_COMMENTS.inputSchema.properties;
   assert.equal(listCommentsProps.pageSize.minimum, 1);
