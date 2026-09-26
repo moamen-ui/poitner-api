@@ -154,15 +154,15 @@ public class BillingService(
         if (dc!.PlanScopes.Count > 0 && dc.PlanScopes.All(s => s.PlanId != planId))
             return Result<QuoteResult>.Failure(MessageKeys.Billing.CodeNotForPlan);
 
+        // Review finding #3: a workspace's own Pending redemption of this code must NOT block a
+        // quote — RequestPlanAsync (§3.6a) releases that same Pending redemption before re-quoting,
+        // so only an already-Applied redemption of this code by this workspace is a real reuse.
         var alreadyUsed = await unitOfWork
             .DiscountRedemptions.IgnoreQueryFilters()
             .AnyAsync(r =>
                 r.DiscountCodeId == dc.Id
                 && r.OwnerId == workspaceId
-                && (
-                    r.Status == DiscountRedemptionStatus.Pending
-                    || r.Status == DiscountRedemptionStatus.Applied
-                )
+                && r.Status == DiscountRedemptionStatus.Applied
             );
         if (alreadyUsed)
             return Result<QuoteResult>.Failure(MessageKeys.Billing.CodeAlreadyUsed);
@@ -713,9 +713,23 @@ public class BillingService(
                         MessageKeys.Billing.VoidOnlyLatest
                     );
 
+                // Review finding #1: a voided Payment row keeps Kind == Payment forever (the ledger
+                // is append-only), so "latest Payment" must exclude any Payment this workspace has
+                // already voided — otherwise once the newest payment is voided, the next-newest can
+                // never be voided (it is permanently shadowed by the already-voided one).
+                var voidedPaymentIds = unitOfWork
+                    .BillingPayments.Where(v =>
+                        v.OwnerId == workspaceId
+                        && v.Kind == BillingPaymentKind.Void
+                        && v.VoidsPaymentId != null
+                    )
+                    .Select(v => v.VoidsPaymentId!.Value);
+
                 var latestId = await unitOfWork
                     .BillingPayments.Where(p =>
-                        p.OwnerId == workspaceId && p.Kind == BillingPaymentKind.Payment
+                        p.OwnerId == workspaceId
+                        && p.Kind == BillingPaymentKind.Payment
+                        && !voidedPaymentIds.Contains(p.Id)
                     )
                     .OrderByDescending(p => p.RecordedAt)
                     .ThenByDescending(p => p.Id)

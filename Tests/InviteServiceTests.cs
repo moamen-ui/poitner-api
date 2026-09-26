@@ -2194,6 +2194,113 @@ public class InviteServiceTests
         Assert.Null(sub.RequestedPlanId);
     }
 
+    // ── Review findings #2, #4: new-workspace invite CREATE — comp field UTC/validation ──────
+
+    private static int SeedProPlan(string dbName)
+    {
+        using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
+        var plan = new Plan
+        {
+            Name = "Pro",
+            Slug = "pro",
+            IsActive = true,
+            DisplayState = PlanDisplayState.Visible,
+            PriceMonthly = 49m,
+            Currency = "USD",
+            Entitlements = new PlanEntitlements(),
+        };
+        seed.Plans.Add(plan);
+        seed.SaveChanges();
+        return plan.Id;
+    }
+
+    [Fact]
+    public async Task CreateNewWorkspaceInvite_Complimentary_CompEndsAtConvertedToUtc()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var planId = SeedProPlan(dbName);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var db = BuildContext(superAdmin, dbName);
+        var svc = BuildService(superAdmin, db);
+
+        // Review finding #2: System.Text.Json deserializes an offset-less ISO timestamp as
+        // DateTimeKind.Unspecified — Npgsql would otherwise throw InvalidCastException persisting
+        // this straight through to invites.comp_ends_at (timestamptz).
+        var unspecified = DateTime.SpecifyKind(
+            DateTime.UtcNow.AddDays(30),
+            DateTimeKind.Unspecified
+        );
+
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest
+            {
+                CreateNewWorkspace = true,
+                Email = "vip@newco.test",
+                PlanId = planId,
+                Complimentary = true,
+                CompReason = "VIP",
+                CompEndsAt = unspecified,
+            }
+        );
+
+        Assert.True(result.IsSuccess, result.Message);
+        var stored = db.Invites.IgnoreQueryFilters().Single();
+        Assert.Equal(DateTimeKind.Utc, stored.CompEndsAt!.Value.Kind);
+    }
+
+    [Fact]
+    public async Task CreateNewWorkspaceInvite_CompReasonTooLong_Rejected()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var planId = SeedProPlan(dbName);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var db = BuildContext(superAdmin, dbName);
+        var svc = BuildService(superAdmin, db);
+
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest
+            {
+                CreateNewWorkspace = true,
+                Email = "vip2@newco.test",
+                PlanId = planId,
+                Complimentary = true,
+                CompReason = new string('x', 201),
+            }
+        );
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Billing.CompReasonTooLong, result.Message);
+        Assert.Empty(db.Invites.IgnoreQueryFilters().ToList());
+    }
+
+    [Fact]
+    public async Task CreateNewWorkspaceInvite_CompEndsAtInPast_Rejected()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var planId = SeedProPlan(dbName);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var db = BuildContext(superAdmin, dbName);
+        var svc = BuildService(superAdmin, db);
+
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest
+            {
+                CreateNewWorkspace = true,
+                Email = "vip3@newco.test",
+                PlanId = planId,
+                Complimentary = true,
+                CompEndsAt = DateTime.UtcNow.AddDays(-1),
+            }
+        );
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Billing.CompEndsAtMustBeFuture, result.Message);
+        Assert.Empty(db.Invites.IgnoreQueryFilters().ToList());
+    }
+
     [Fact]
     public async Task AcceptNewWorkspace_NonCompPaidPlan_ParksRequestAtListPrice()
     {

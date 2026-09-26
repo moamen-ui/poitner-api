@@ -277,6 +277,34 @@ public class Db20BillingTests
         Assert.Equal(new DateTime(2028, 3, 15, 0, 0, 0, DateTimeKind.Utc), end);
     }
 
+    // Review finding #2: the shared UTC-conversion helper every request-DateTime entry point now
+    // goes through, mirroring RecordPaymentAsync's own hand-rolled paidAt conversion.
+    [Fact]
+    public void ToUtc_UnspecifiedKind_ConvertedToUtc()
+    {
+        var unspecified = DateTime.SpecifyKind(
+            new DateTime(2027, 6, 1, 12, 0, 0),
+            DateTimeKind.Unspecified
+        );
+        var converted = BillingMath.ToUtc(unspecified);
+        Assert.Equal(DateTimeKind.Utc, converted.Kind);
+    }
+
+    [Fact]
+    public void ToUtc_LocalKind_ConvertedToUtcEquivalentInstant()
+    {
+        var local = DateTime.SpecifyKind(new DateTime(2027, 6, 1, 12, 0, 0), DateTimeKind.Local);
+        var converted = BillingMath.ToUtc(local);
+        Assert.Equal(DateTimeKind.Utc, converted.Kind);
+        Assert.Equal(local.ToUniversalTime(), converted);
+    }
+
+    [Fact]
+    public void ToUtc_Null_ReturnsNull()
+    {
+        Assert.Null(BillingMath.ToUtc((DateTime?)null));
+    }
+
     // ── 2. Request from Free ─────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -535,6 +563,142 @@ public class Db20BillingTests
         var result = await svc.RequestPlanAsync(proId, "PLANONLY");
         Assert.False(result.IsSuccess);
         Assert.Equal(MessageKeys.Billing.CodeNotForPlan, result.Message);
+    }
+
+    // ── 3b. Quote (review finding #7: QuoteAsync itself was never exercised) ────────────────
+
+    [Fact]
+    public async Task QuoteAsync_WithCode_ReturnsDiscountedPrice()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceId, adminPid, _, proId) = SeedWorkspace(db);
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            seed.DiscountCodes.Add(
+                new DiscountCode
+                {
+                    Code = "SAVE10",
+                    Kind = DiscountKind.Percent,
+                    Value = 10m,
+                    Duration = DiscountDuration.Once,
+                    IsActive = true,
+                }
+            );
+            seed.SaveChanges();
+        }
+
+        using var ctx = Ctx(AsAdmin(workspaceId, adminPid), db);
+        var svc = Billing(ctx, AsAdmin(workspaceId, adminPid));
+        var result = await svc.QuoteAsync(proId, "save10"); // lower-case matches, same as /request
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(proId, result.Data!.PlanId);
+        Assert.Equal(19.99m, result.Data.Price);
+        Assert.Equal(2.00m, result.Data.Discount);
+        Assert.Equal(17.99m, result.Data.Final);
+        Assert.NotNull(result.Data.DiscountCodeId);
+
+        // A pure preview — QuoteAsync must not create/touch any redemption row.
+        Assert.Empty(ctx.DiscountRedemptions.IgnoreQueryFilters().ToList());
+    }
+
+    [Fact]
+    public async Task QuoteAsync_NoCode_ReturnsListPrice()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceId, adminPid, _, proId) = SeedWorkspace(db);
+        using var ctx = Ctx(AsAdmin(workspaceId, adminPid), db);
+        var svc = Billing(ctx, AsAdmin(workspaceId, adminPid));
+
+        var result = await svc.QuoteAsync(proId, null);
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(19.99m, result.Data!.Price);
+        Assert.Equal(0m, result.Data.Discount);
+        Assert.Equal(19.99m, result.Data.Final);
+        Assert.Null(result.Data.DiscountCodeId);
+    }
+
+    [Fact]
+    public async Task QuoteAsync_OwnPendingRedemptionOfSameCode_StillSucceeds()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceId, adminPid, _, proId) = SeedWorkspace(db);
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            seed.DiscountCodes.Add(
+                new DiscountCode
+                {
+                    Code = "SAVE10",
+                    Kind = DiscountKind.Percent,
+                    Value = 10m,
+                    Duration = DiscountDuration.Once,
+                    IsActive = true,
+                }
+            );
+            seed.SaveChanges();
+        }
+
+        var user = AsAdmin(workspaceId, adminPid);
+        // Creates a Pending redemption of SAVE10 for this workspace (§3.6a).
+        using (var ctx1 = Ctx(user, db))
+            Assert.True((await Billing(ctx1, user).RequestPlanAsync(proId, "SAVE10")).IsSuccess);
+
+        // Review finding #3 regression: previewing the SAME code again via /quote must not be
+        // rejected as CodeAlreadyUsed just because this workspace's own Pending redemption of it
+        // already exists — only an Applied redemption is a genuine reuse (consistent with /request,
+        // which releases-then-requotes the same Pending row).
+        using var ctx = Ctx(user, db);
+        var quote = await Billing(ctx, user).QuoteAsync(proId, "SAVE10");
+        Assert.True(quote.IsSuccess, quote.Message);
+        Assert.Equal(17.99m, quote.Data!.Final);
+    }
+
+    [Fact]
+    public async Task QuoteAsync_OtherWorkspaceAppliedRedemption_StillBlocksThisWorkspacesOwnApplied()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceId, adminPid, _, proId) = SeedWorkspace(db);
+        int codeId;
+        using (var seed = Ctx(new FakeCurrentUser { IsSuperAdmin = true }, db))
+        {
+            var code = new DiscountCode
+            {
+                Code = "ONCE1",
+                Kind = DiscountKind.Percent,
+                Value = 10m,
+                IsActive = true,
+            };
+            seed.DiscountCodes.Add(code);
+            seed.SaveChanges();
+            codeId = code.Id;
+            seed.DiscountRedemptions.Add(
+                new DiscountRedemption
+                {
+                    OwnerId = workspaceId,
+                    DiscountCodeId = code.Id,
+                    PlanId = proId,
+                    Status = DiscountRedemptionStatus.Applied,
+                    CodeSnapshot = "ONCE1",
+                    KindSnapshot = DiscountKind.Percent,
+                    DurationSnapshot = DiscountDuration.Once,
+                    ValueSnapshot = 10m,
+                    OriginalPrice = 19.99m,
+                    DiscountAmount = 2.00m,
+                    FinalPrice = 17.99m,
+                    PriceCurrency = "USD",
+                    CreatedAt = DateTime.UtcNow,
+                    CreatedBy = adminPid,
+                    AppliedAt = DateTime.UtcNow,
+                }
+            );
+            seed.SaveChanges();
+        }
+
+        using var ctx = Ctx(AsAdmin(workspaceId, adminPid), db);
+        var svc = Billing(ctx, AsAdmin(workspaceId, adminPid));
+        var result = await svc.QuoteAsync(proId, "ONCE1");
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Billing.CodeAlreadyUsed, result.Message);
     }
 
     // ── 4. Record payment ────────────────────────────────────────────────────────────────────
@@ -804,6 +968,67 @@ public class Db20BillingTests
         Assert.Equal(MessageKeys.Billing.VoidOnlyLatest, second.Message);
     }
 
+    // Review finding #1 regression: a voided Payment row keeps Kind == Payment forever (append-only
+    // ledger), so once the NEWEST payment (P2) is voided, the next-newest (P1) — now the latest
+    // NON-voided payment — must itself become voidable, not permanently shadowed by P2.
+    [Fact]
+    public async Task VoidPayment_P1ThenP2_VoidP2ThenP1_BothSucceed()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceId, adminPid, _, proId) = SeedWorkspace(db);
+        var user = AsAdmin(workspaceId, adminPid);
+        using (var ctx1 = Ctx(user, db))
+            Assert.True((await Billing(ctx1, user).RequestPlanAsync(proId, null)).IsSuccess);
+
+        long p1Id;
+        using (var ctx2 = Ctx(AsSuperAdmin(), db))
+        {
+            var pay1 = await Billing(ctx2, AsSuperAdmin())
+                .RecordPaymentAsync(
+                    workspaceId,
+                    19.99m,
+                    null,
+                    DateTime.UtcNow,
+                    PaymentMethod.Cash,
+                    null,
+                    null
+                );
+            Assert.True(pay1.IsSuccess, pay1.Message);
+            p1Id = pay1.Data!.Id;
+        }
+
+        long p2Id;
+        using (var ctx3 = Ctx(AsSuperAdmin(), db))
+        {
+            // A renewal payment for the same plan — sub is already Active on `proId` with a
+            // CurrentPeriodEnd, so this is accepted as a contiguous renewal, not a new request.
+            var pay2 = await Billing(ctx3, AsSuperAdmin())
+                .RecordPaymentAsync(
+                    workspaceId,
+                    19.99m,
+                    null,
+                    DateTime.UtcNow,
+                    PaymentMethod.Cash,
+                    null,
+                    null
+                );
+            Assert.True(pay2.IsSuccess, pay2.Message);
+            p2Id = pay2.Data!.Id;
+        }
+
+        using (var ctx4 = Ctx(AsSuperAdmin(), db))
+        {
+            var voidP2 = await Billing(ctx4, AsSuperAdmin())
+                .VoidPaymentAsync(workspaceId, p2Id, "void p2");
+            Assert.True(voidP2.IsSuccess, voidP2.Message);
+        }
+
+        using var ctx = Ctx(AsSuperAdmin(), db);
+        var voidP1 = await Billing(ctx, AsSuperAdmin())
+            .VoidPaymentAsync(workspaceId, p1Id, "void p1");
+        Assert.True(voidP1.IsSuccess, voidP1.Message);
+    }
+
     // ── 6. Append-only ───────────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -943,6 +1168,84 @@ public class Db20BillingTests
         Assert.False(sub.IsComplimentary);
         Assert.Null(sub.CompedBy);
         Assert.Null(sub.CompReason);
+    }
+
+    // ── Review findings #2, #4, #5: ChangePlanAsync comp-field validation/UTC/operator id ───
+
+    [Fact]
+    public async Task ChangePlan_CompReasonTooLong_Rejected()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceId, _, _, proId) = SeedWorkspace(db);
+        using var ctx = Ctx(AsSuperAdmin(), db);
+        var svc = Tenants(ctx, AsSuperAdmin());
+
+        var result = await svc.ChangePlanAsync(workspaceId, proId, new string('x', 201), null);
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Billing.CompReasonTooLong, result.Message);
+
+        // Nothing was persisted — no half-applied plan change.
+        Assert.Empty(ctx.Subscriptions.IgnoreQueryFilters().Where(s => s.OwnerId == workspaceId));
+    }
+
+    [Fact]
+    public async Task ChangePlan_CompEndsAtInPast_Rejected()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceId, _, _, proId) = SeedWorkspace(db);
+        using var ctx = Ctx(AsSuperAdmin(), db);
+        var svc = Tenants(ctx, AsSuperAdmin());
+
+        var result = await svc.ChangePlanAsync(
+            workspaceId,
+            proId,
+            null,
+            DateTime.UtcNow.AddDays(-1)
+        );
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Billing.CompEndsAtMustBeFuture, result.Message);
+    }
+
+    [Fact]
+    public async Task ChangePlan_PaidPlan_NoResolvedOperatorId_Forbidden()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceId, _, _, proId) = SeedWorkspace(db);
+        // Same "nullable-with-default" ICurrentUser seam TenantService's constructor comment
+        // describes — but a paid plan now REQUIRES a resolved operator id (ck_subscriptions_comp_
+        // consistent needs comped_by whenever is_complimentary is true), so this must be Forbidden,
+        // never a DbUpdateException from the check constraint.
+        var noOperator = new FakeCurrentUser { IsSuperAdmin = true }; // Id left null
+        using var ctx = Ctx(noOperator, db);
+        var svc = Tenants(ctx, noOperator);
+
+        var result = await svc.ChangePlanAsync(workspaceId, proId, "VIP", null);
+        Assert.True(result.IsForbidden, result.Message);
+        Assert.Equal(MessageKeys.Common.Forbidden, result.Message);
+        Assert.Empty(ctx.Subscriptions.IgnoreQueryFilters().Where(s => s.OwnerId == workspaceId));
+    }
+
+    [Fact]
+    public async Task ChangePlan_PaidPlan_CompEndsAtConvertedToUtc()
+    {
+        var db = Guid.NewGuid().ToString();
+        var (workspaceId, _, _, proId) = SeedWorkspace(db);
+        using var ctx = Ctx(AsSuperAdmin(), db);
+        var svc = Tenants(ctx, AsSuperAdmin());
+
+        // Review finding #2: simulates the Unspecified kind System.Text.Json produces for an
+        // offset-less ISO timestamp — Npgsql would otherwise throw InvalidCastException persisting
+        // this straight through to subscriptions.comp_ends_at (timestamptz).
+        var unspecified = DateTime.SpecifyKind(
+            DateTime.UtcNow.AddDays(30),
+            DateTimeKind.Unspecified
+        );
+
+        var result = await svc.ChangePlanAsync(workspaceId, proId, "VIP", unspecified);
+        Assert.True(result.IsSuccess, result.Message);
+
+        var sub = ctx.Subscriptions.IgnoreQueryFilters().Single(s => s.OwnerId == workspaceId);
+        Assert.Equal(DateTimeKind.Utc, sub.CompEndsAt!.Value.Kind);
     }
 
     // ── 11. Tenancy (R8.5) ───────────────────────────────────────────────────────────────────

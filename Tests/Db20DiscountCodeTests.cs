@@ -134,6 +134,81 @@ public class Db20DiscountCodeTests
         Assert.False(result.Data.IsActive);
     }
 
+    // ── Review finding #2: request DateTimes are converted to UTC (R20) ─────────────────────
+
+    [Fact]
+    public async Task Create_ValidFromValidUntil_ConvertedToUtc()
+    {
+        var db = Guid.NewGuid().ToString();
+        using var ctx = Ctx(db);
+
+        // Simulates what System.Text.Json produces for an offset-less ISO timestamp — Npgsql would
+        // otherwise throw InvalidCastException persisting this straight through to
+        // discount_codes.valid_from/valid_until (timestamptz).
+        var unspecifiedFrom = DateTime.SpecifyKind(DateTime.UtcNow, DateTimeKind.Unspecified);
+        var unspecifiedUntil = DateTime.SpecifyKind(
+            DateTime.UtcNow.AddDays(30),
+            DateTimeKind.Unspecified
+        );
+
+        var result = await Service(ctx)
+            .CreateAsync(
+                new CreateDiscountCodeRequest
+                {
+                    Code = "UTCFIX",
+                    Kind = DiscountKind.Percent,
+                    Value = 10m,
+                    ValidFrom = unspecifiedFrom,
+                    ValidUntil = unspecifiedUntil,
+                }
+            );
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(DateTimeKind.Utc, result.Data!.ValidFrom!.Value.Kind);
+        Assert.Equal(DateTimeKind.Utc, result.Data.ValidUntil!.Value.Kind);
+    }
+
+    [Fact]
+    public async Task Update_ValidFromValidUntil_ConvertedToUtc()
+    {
+        var db = Guid.NewGuid().ToString();
+        int id;
+        using (var ctx1 = Ctx(db))
+        {
+            var created = await Service(ctx1)
+                .CreateAsync(
+                    new CreateDiscountCodeRequest
+                    {
+                        Code = "UTCFIX2",
+                        Kind = DiscountKind.Percent,
+                        Value = 10m,
+                    }
+                );
+            id = created.Data!.Id;
+        }
+
+        var unspecifiedUntil = DateTime.SpecifyKind(
+            DateTime.UtcNow.AddDays(60),
+            DateTimeKind.Unspecified
+        );
+
+        using var ctx = Ctx(db);
+        var result = await Service(ctx)
+            .UpdateAsync(
+                id,
+                new UpdateDiscountCodeRequest
+                {
+                    Kind = DiscountKind.Percent,
+                    Value = 10m,
+                    IsActive = true,
+                    ValidUntil = unspecifiedUntil,
+                }
+            );
+
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Equal(DateTimeKind.Utc, result.Data!.ValidUntil!.Value.Kind);
+    }
+
     [Fact]
     public async Task List_MostUsedSort_OrdersByAppliedPlusPending()
     {

@@ -885,7 +885,8 @@ public static class EmailTemplateBuilder
         var brandColor = EmailLayout.NormalizeBrandColor(primaryColor);
         var app = EmailLayout.Html(appUrl.TrimEnd('/'));
         var billingUrl = $"{app}/settings/billing";
-        var billingLink = $"<a href=\"{billingUrl}\" style=\"color:{brandColor};\">{billingUrl}</a>";
+        var billingLink =
+            $"<a href=\"{billingUrl}\" style=\"color:{brandColor};\">{billingUrl}</a>";
 
         if (isAr)
         {
@@ -893,7 +894,7 @@ public static class EmailTemplateBuilder
             var contentAr =
                 Heading(EmailLayout.Html(subjectAr))
                 + Paragraph(
-                    $"يقترب موعد تجديد خطة مساحة العمل <strong>{ws}</strong>. راجع الفاتورة وسجّل الدفعة من {billingLink}."
+                    $"يقترب موعد تجديد خطة مساحة العمل <strong>{ws}</strong>. راجع تفاصيل التجديد والدفع عبر الرابط: {billingLink}."
                 );
             return (
                 subjectAr,
@@ -913,7 +914,7 @@ public static class EmailTemplateBuilder
         var contentEn =
             Heading(EmailLayout.Html(subjectEn))
             + Paragraph(
-                $"The plan for <strong>{ws}</strong> is due for renewal soon. Review the quote and record payment from {billingLink}."
+                $"The plan for <strong>{ws}</strong> is due for renewal soon. Review the renewal quote and payment details at {billingLink}."
             );
         return (
             subjectEn,
@@ -945,7 +946,7 @@ public static class EmailTemplateBuilder
             var contentAr =
                 Heading(EmailLayout.Html(subjectAr))
                 + EmailComponents.Callout(
-                    $"لم يُسدَّد اشتراك مساحة العمل <strong>{ws}</strong> في موعده. تُبقى ميزاتك متاحة خلال فترة سماح قصيرة — بعدها سيُخفَّض الاشتراك إلى الخطة المجانية تلقائيًا.",
+                    $"لم يُسدَّد اشتراك مساحة العمل <strong>{ws}</strong> في موعده. تبقى ميزاتك متاحة خلال فترة سماح قصيرة — بعدها سيُخفَّض الاشتراك إلى الخطة المجانية تلقائيًا.",
                     "#f59e0b",
                     rtl: true
                 );

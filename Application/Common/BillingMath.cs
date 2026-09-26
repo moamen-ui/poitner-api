@@ -10,7 +10,8 @@ namespace Pointer.Application.Common;
 public static class BillingMath
 {
     /// <summary>Rounds to 2 decimal places, away from zero (R20) — the one rounding rule for money.</summary>
-    public static decimal Round(decimal value) => Math.Round(value, 2, MidpointRounding.AwayFromZero);
+    public static decimal Round(decimal value) =>
+        Math.Round(value, 2, MidpointRounding.AwayFromZero);
 
     /// <summary>§3.2: <c>plan.PriceMonthly</c> IS the price per billing interval, whatever its name
     /// says (verified against <c>landing/index.html:966-975</c>).</summary>
@@ -60,4 +61,18 @@ public static class BillingMath
     /// <summary>Final = price - discount, floored at 0 (a 100%-or-more discount never goes negative).</summary>
     public static decimal FinalPrice(decimal price, decimal discount) =>
         Round(Math.Max(0m, price - discount));
+
+    /// <summary>R20: every <c>DateTime</c> written must be <see cref="DateTimeKind.Utc"/> — Npgsql
+    /// refuses <c>Unspecified</c> for <c>timestamptz</c> (the DB-15 lesson). A request DTO's
+    /// <c>DateTime</c>/<c>DateTime?</c> is deserialized by <c>System.Text.Json</c> as
+    /// <see cref="DateTimeKind.Unspecified"/> whenever the caller omits a timezone offset, so every
+    /// entry point that copies a request timestamp onto an entity must convert it through here
+    /// first — not just <c>BillingService.RecordPaymentAsync</c>'s hand-rolled <c>paidAt</c>
+    /// conversion, which this mirrors.</summary>
+    public static DateTime? ToUtc(DateTime? dt) =>
+        dt.HasValue ? DateTime.SpecifyKind(dt.Value.ToUniversalTime(), DateTimeKind.Utc) : null;
+
+    /// <summary>Non-nullable overload of <see cref="ToUtc(DateTime?)"/>.</summary>
+    public static DateTime ToUtc(DateTime dt) =>
+        DateTime.SpecifyKind(dt.ToUniversalTime(), DateTimeKind.Utc);
 }

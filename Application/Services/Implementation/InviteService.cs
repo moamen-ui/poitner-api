@@ -246,6 +246,17 @@ public class InviteService : IInviteService
                     .AnyAsync(p => p.Id == compPlanId && p.DeletedAt == null && p.PriceMonthly > 0);
             if (!compPlanValid)
                 return Result<InviteResponse>.Failure(MessageKeys.Billing.PlanMisconfigured);
+
+            // Review finding #4: defensive re-check behind CreateTenantInviteValidator, which only
+            // covers the /api/admin/tenants/invites route — this method is also reachable via the
+            // legacy /api/admin/invites route (CreateInviteRequestValidator does not validate these).
+            if (request.CompReason != null && request.CompReason.Trim().Length > 200)
+                return Result<InviteResponse>.Failure(MessageKeys.Billing.CompReasonTooLong);
+            if (
+                request.CompEndsAt.HasValue
+                && BillingMath.ToUtc(request.CompEndsAt.Value) <= DateTime.UtcNow
+            )
+                return Result<InviteResponse>.Failure(MessageKeys.Billing.CompEndsAtMustBeFuture);
         }
 
         var invite = new Invite
@@ -266,7 +277,9 @@ public class InviteService : IInviteService
                     ? request.CompReason?.Trim()
                     : null,
             CompEndsAt =
-                request.CreateNewWorkspace && request.Complimentary ? request.CompEndsAt : null,
+                request.CreateNewWorkspace && request.Complimentary
+                    ? BillingMath.ToUtc(request.CompEndsAt)
+                    : null,
         };
 
         await _unitOfWork.Repository<Invite>().AddAsync(invite);

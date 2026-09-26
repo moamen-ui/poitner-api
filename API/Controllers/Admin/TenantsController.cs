@@ -215,6 +215,8 @@ public class TenantsController(
             request.CompReason,
             request.CompEndsAt
         );
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
         if (result.IsNotFound)
             return NotFound(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
@@ -336,18 +338,6 @@ public class TenantsController(
 public class SetTenantStatusRequest
 {
     public string Action { get; set; } = string.Empty;
-}
-
-public class ChangeTenantPlanRequest
-{
-    public int PlanId { get; set; }
-
-    /// <summary>DB-20 §3.6e: only meaningful when the plan is paid (comp marker) — free text, no
-    /// personal data. Null defaults to "Assigned by operator".</summary>
-    public string? CompReason { get; set; }
-
-    /// <summary>DB-20 §3.6e: optional comp expiry, must be in the future when set.</summary>
-    public DateTime? CompEndsAt { get; set; }
 }
 
 public class SetDemoConfigRequest

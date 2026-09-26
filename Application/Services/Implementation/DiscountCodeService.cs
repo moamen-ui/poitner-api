@@ -85,8 +85,8 @@ public class DiscountCodeService(IUnitOfWork unitOfWork, IAuditWriter? audit = n
             Value = BillingMath.Round(request.Value),
             Currency = request.Currency?.Trim().ToUpperInvariant(),
             Duration = request.Duration,
-            ValidFrom = request.ValidFrom,
-            ValidUntil = request.ValidUntil,
+            ValidFrom = BillingMath.ToUtc(request.ValidFrom),
+            ValidUntil = BillingMath.ToUtc(request.ValidUntil),
             MaxRedemptions = request.MaxRedemptions,
             IsActive = request.IsActive,
             PlanScopes = planIds.Select(pid => new DiscountCodePlan { PlanId = pid }).ToList(),
@@ -109,10 +109,15 @@ public class DiscountCodeService(IUnitOfWork unitOfWork, IAuditWriter? audit = n
             )
         );
 
-        return Result<DiscountCodeResponse>.Success(ToResponse(code, await CountsAsync(new[] { code.Id })));
+        return Result<DiscountCodeResponse>.Success(
+            ToResponse(code, await CountsAsync(new[] { code.Id }))
+        );
     }
 
-    public async Task<Result<DiscountCodeResponse>> UpdateAsync(int id, UpdateDiscountCodeRequest request)
+    public async Task<Result<DiscountCodeResponse>> UpdateAsync(
+        int id,
+        UpdateDiscountCodeRequest request
+    )
     {
         var code = await unitOfWork
             .Repository<DiscountCode>()
@@ -140,8 +145,8 @@ public class DiscountCodeService(IUnitOfWork unitOfWork, IAuditWriter? audit = n
         code.Value = BillingMath.Round(request.Value);
         code.Currency = request.Currency?.Trim().ToUpperInvariant();
         code.Duration = request.Duration;
-        code.ValidFrom = request.ValidFrom;
-        code.ValidUntil = request.ValidUntil;
+        code.ValidFrom = BillingMath.ToUtc(request.ValidFrom);
+        code.ValidUntil = BillingMath.ToUtc(request.ValidUntil);
         code.MaxRedemptions = request.MaxRedemptions;
         code.IsActive = request.IsActive;
 
@@ -162,7 +167,9 @@ public class DiscountCodeService(IUnitOfWork unitOfWork, IAuditWriter? audit = n
             )
         );
 
-        return Result<DiscountCodeResponse>.Success(ToResponse(code, await CountsAsync(new[] { id })));
+        return Result<DiscountCodeResponse>.Success(
+            ToResponse(code, await CountsAsync(new[] { id }))
+        );
     }
 
     public async Task<Result<List<DiscountRedemptionResponse>>> GetRedemptionsAsync(int id)
@@ -172,7 +179,9 @@ public class DiscountCodeService(IUnitOfWork unitOfWork, IAuditWriter? audit = n
             .Query()
             .AnyAsync(c => c.Id == id && c.DeletedAt == null);
         if (!exists)
-            return Result<List<DiscountRedemptionResponse>>.NotFound(MessageKeys.DiscountCode.NotFound);
+            return Result<List<DiscountRedemptionResponse>>.NotFound(
+                MessageKeys.DiscountCode.NotFound
+            );
 
         var rows = await unitOfWork
             .DiscountRedemptions.IgnoreQueryFilters()
@@ -187,7 +196,10 @@ public class DiscountCodeService(IUnitOfWork unitOfWork, IAuditWriter? audit = n
             .Where(p => rows.Select(r => r.PlanId).Distinct().Contains(p.Id))
             .ToDictionaryAsync(p => p.Id, p => p.Name);
 
-        var workspaceIds = rows.Where(r => r.OwnerId != null).Select(r => r.OwnerId!.Value).Distinct().ToList();
+        var workspaceIds = rows.Where(r => r.OwnerId != null)
+            .Select(r => r.OwnerId!.Value)
+            .Distinct()
+            .ToList();
         var workspaceNames =
             workspaceIds.Count == 0
                 ? new Dictionary<Guid, string>()
@@ -196,8 +208,7 @@ public class DiscountCodeService(IUnitOfWork unitOfWork, IAuditWriter? audit = n
                     .Where(w => workspaceIds.Contains(w.Id))
                     .ToDictionaryAsync(w => w.Id, w => w.Name);
 
-        var responses = rows
-            .Select(r => new DiscountRedemptionResponse
+        var responses = rows.Select(r => new DiscountRedemptionResponse
             {
                 Id = r.Id,
                 WorkspaceId = r.OwnerId,
@@ -229,7 +240,9 @@ public class DiscountCodeService(IUnitOfWork unitOfWork, IAuditWriter? audit = n
 
     // ── Shared ────────────────────────────────────────────────────────────────────────────────
 
-    private async Task<Dictionary<int, (int Applied, int Pending)>> CountsAsync(IEnumerable<int> codeIds)
+    private async Task<Dictionary<int, (int Applied, int Pending)>> CountsAsync(
+        IEnumerable<int> codeIds
+    )
     {
         var ids = codeIds.Distinct().ToList();
         if (ids.Count == 0)

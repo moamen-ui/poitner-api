@@ -519,7 +519,8 @@ public static class MessageKeys
             "This plan cannot be billed right now — its price or currency is not set up correctly.";
         public const string CodeInvalid = "That reference code is not valid.";
         public const string CodeNotForPlan = "That reference code does not apply to this plan.";
-        public const string CodeAlreadyUsed = "This workspace has already used that reference code.";
+        public const string CodeAlreadyUsed =
+            "This workspace has already used that reference code.";
         public const string Complimentary =
             "This workspace is on a complimentary plan and cannot be billed.";
         public const string AlreadyOnPlan = "This workspace is already on that plan.";
@@ -527,9 +528,12 @@ public static class MessageKeys
         public const string VoidOnlyLatest = "Only the latest payment can be voided.";
         public const string StateChanged =
             "This workspace's billing state changed — please refresh and try again.";
-        public const string RequestNotFound = "There is no pending plan request for this workspace.";
+        public const string RequestNotFound =
+            "There is no pending plan request for this workspace.";
         public const string InvalidAmount = "Enter a valid amount.";
         public const string InvalidPaidAt = "Enter a valid payment date.";
+        public const string CompReasonTooLong = "Comp reason must be 200 characters or fewer.";
+        public const string CompEndsAtMustBeFuture = "Comp end date must be in the future.";
     }
 
     /// <summary>DB-20: super-admin reference/discount code CRUD.</summary>
@@ -540,6 +544,7 @@ public static class MessageKeys
         public const string CodeFormat =
             "Code must be 3-32 characters: letters, numbers, underscore or dash, starting with a letter or number.";
         public const string InvalidValue = "Enter a valid discount value for this code's kind.";
-        public const string InvalidWindow = "The valid-until date must be after the valid-from date.";
+        public const string InvalidWindow =
+            "The valid-until date must be after the valid-from date.";
     }
 }

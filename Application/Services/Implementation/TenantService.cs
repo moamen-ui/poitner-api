@@ -522,6 +522,26 @@ public class TenantService : ITenantService
         if (plan == null)
             return Result.NotFound(MessageKeys.Plan.NotFound);
 
+        // Review findings #4/#5: comp fields and a resolved operator id only matter for the paid
+        // branch below (the one that actually persists them), but are checked here — before any
+        // Subscription mutation — so this service's own public contract is safe even when called
+        // from somewhere that skips ChangeTenantPlanRequestValidator (that validator covers the one
+        // HTTP route; this defends the method itself, per DB-RULES R20).
+        Guid? operatorId = null;
+        if (plan.PriceMonthly > 0)
+        {
+            if (compReason != null && compReason.Length > 200)
+                return Result.Failure(MessageKeys.Billing.CompReasonTooLong);
+            if (compEndsAt.HasValue && BillingMath.ToUtc(compEndsAt.Value) <= DateTime.UtcNow)
+                return Result.Failure(MessageKeys.Billing.CompEndsAtMustBeFuture);
+            // ck_subscriptions_comp_consistent requires comped_by whenever is_complimentary is true
+            // — an unresolved caller (e.g. a headless/service-token call with no ICurrentUser) must
+            // never reach the DbUpdateException that constraint would otherwise throw.
+            if (_currentUser?.Id is not Guid resolvedOperatorId)
+                return Result.Forbidden(MessageKeys.Common.Forbidden);
+            operatorId = resolvedOperatorId;
+        }
+
         // Upsert the tenant's subscription (one per tenant). Bypass the filter + match OwnerId.
         var sub = await _unitOfWork
             .Repository<Subscription>()
@@ -568,9 +588,9 @@ public class TenantService : ITenantService
         {
             sub.IsComplimentary = true;
             sub.CompedAt = DateTime.UtcNow;
-            sub.CompedBy = _currentUser?.Id;
+            sub.CompedBy = operatorId;
             sub.CompReason = compReason ?? "Assigned by operator";
-            sub.CompEndsAt = compEndsAt;
+            sub.CompEndsAt = BillingMath.ToUtc(compEndsAt);
             sub.Status = SubscriptionStatus.Active;
             sub.CurrentPeriodEnd = null;
             sub.RenewalReminderSentAt = null;
