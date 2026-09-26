@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Pointer.API.Auth;
 using Pointer.Application.Common;
+using Pointer.Application.DTOs.Billing;
 using Pointer.Application.DTOs.Impersonation;
 using Pointer.Application.DTOs.Tenant;
 using Pointer.Application.Response;
@@ -18,7 +19,8 @@ public class TenantsController(
     ITenantService tenantService,
     ITenantInviteService tenantInvites,
     IImpersonationService impersonationService,
-    IWorkspaceLifecycleService lifecycle
+    IWorkspaceLifecycleService lifecycle,
+    IBillingService billing
 ) : ControllerBase
 {
     // ── Workspace invitations — the primary way to onboard a tenant ──────────────────────────────
@@ -207,9 +209,94 @@ public class TenantsController(
         [FromBody] ChangeTenantPlanRequest request
     )
     {
-        var result = await tenantService.ChangePlanAsync(workspaceId, request.PlanId);
+        var result = await tenantService.ChangePlanAsync(
+            workspaceId,
+            request.PlanId,
+            request.CompReason,
+            request.CompEndsAt
+        );
+        if (result.IsForbidden)
+            return StatusCode(StatusCodes.Status403Forbidden, result);
         if (result.IsNotFound)
             return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    // ── DB-20 §3.9: super-admin billing drawer ──────────────────────────────────────────────
+
+    [HttpGet("{workspaceId:guid}/billing")]
+    [ProducesResponseType(typeof(OperatorBillingResponse), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetBilling(Guid workspaceId)
+    {
+        var result = await billing.GetOperatorBillingAsync(workspaceId);
+        if (result.IsNotFound)
+            return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPost("{workspaceId:guid}/payments")]
+    [Audited(AuditActions.BillingPaymentRecorded)]
+    [ProducesResponseType(typeof(OperatorPaymentResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> RecordPayment(
+        Guid workspaceId,
+        [FromBody] RecordPaymentRequest request
+    )
+    {
+        var result = await billing.RecordPaymentAsync(
+            workspaceId,
+            request.Amount,
+            request.Currency,
+            request.PaidAt,
+            request.Method,
+            request.Reference,
+            request.Note
+        );
+        if (result.IsNotFound)
+            return NotFound(result);
+        if (result.IsConflict)
+            return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpPost("{workspaceId:guid}/payments/{paymentId:long}/void")]
+    [Audited(AuditActions.BillingPaymentVoided)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> VoidPayment(
+        Guid workspaceId,
+        long paymentId,
+        [FromBody] VoidPaymentRequest request
+    )
+    {
+        var result = await billing.VoidPaymentAsync(workspaceId, paymentId, request.Reason);
+        if (result.IsNotFound)
+            return NotFound(result);
+        if (result.IsConflict)
+            return Conflict(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpDelete("{workspaceId:guid}/billing/request")]
+    [Audited(AuditActions.BillingRequestRejected)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    public async Task<IActionResult> RejectBillingRequest(Guid workspaceId)
+    {
+        var result = await billing.RejectRequestAsync(workspaceId);
+        if (result.IsNotFound)
+            return NotFound(result);
+        return result.IsSuccess ? Ok(result) : BadRequest(result);
+    }
+
+    [HttpDelete("{workspaceId:guid}/comp")]
+    [Audited(AuditActions.BillingCompEnded)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(Result), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> EndComp(Guid workspaceId)
+    {
+        var result = await billing.EndCompAsync(workspaceId);
+        if (result.IsConflict)
+            return Conflict(result);
         return result.IsSuccess ? Ok(result) : BadRequest(result);
     }
 
@@ -251,11 +338,6 @@ public class TenantsController(
 public class SetTenantStatusRequest
 {
     public string Action { get; set; } = string.Empty;
-}
-
-public class ChangeTenantPlanRequest
-{
-    public int PlanId { get; set; }
 }
 
 public class SetDemoConfigRequest

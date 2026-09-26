@@ -49,4 +49,14 @@ public class CreateInviteRequest
     /// invite email sends them; ignored for an ordinary (non-quick-access) invite.
     /// </summary>
     public int? ProjectId { get; set; }
+
+    // ── DB-20: new-workspace invites only ──
+
+    /// <summary>Grants <see cref="PlanId"/> for free on accept instead of parking a paid request.
+    /// Requires a live <see cref="PlanId"/> with a positive price. Ignored for member invites.</summary>
+    public bool Complimentary { get; set; }
+
+    public string? CompReason { get; set; }
+
+    public DateTime? CompEndsAt { get; set; }
 }

@@ -61,6 +61,8 @@ public sealed class PassThroughEntitlements : IEntitlementService
 
     public Task<Result> EnforceFlagAsync(Guid tenantId, string key) =>
         Task.FromResult(Result.Success());
+
+    public Task<int> GetFreePlanIdAsync() => Task.FromResult(0);
 }
 
 /// <summary>

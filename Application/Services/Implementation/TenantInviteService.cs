@@ -23,7 +23,8 @@ public class TenantInviteService(
     IUnitOfWork unitOfWork,
     IInviteService invites,
     ICurrentUser currentUser,
-    IAuditWriter audit) : ITenantInviteService
+    IAuditWriter audit
+) : ITenantInviteService
 {
     public async Task<Result<TenantInviteResponse>> CreateAsync(CreateTenantInviteRequest request)
     {
@@ -40,15 +41,23 @@ public class TenantInviteService(
                 DisplayName = request.DisplayName,
                 PlanId = request.PlanId,
                 ExpiresInDays = request.ExpiresInDays,
+                Complimentary = request.Complimentary,
+                CompReason = request.CompReason,
+                CompEndsAt = request.CompEndsAt,
             },
             // This service writes its own tenant_invite.created row below — invite.created would
             // otherwise duplicate it for the same user action (review finding #3).
-            writeAudit: false);
+            writeAudit: false
+        );
 
         if (!created.IsSuccess || created.Data is null)
             return created.IsConflict
-                ? Result<TenantInviteResponse>.Conflict(created.Message ?? MessageKeys.Auth.AccountExists)
-                : Result<TenantInviteResponse>.Failure(created.Message ?? MessageKeys.Invite.NotFound);
+                ? Result<TenantInviteResponse>.Conflict(
+                    created.Message ?? MessageKeys.Auth.AccountExists
+                )
+                : Result<TenantInviteResponse>.Failure(
+                    created.Message ?? MessageKeys.Invite.NotFound
+                );
 
         var row = await LoadWorkspaceInviteAsync(created.Data.Id);
         if (row is null)
@@ -68,7 +77,9 @@ public class TenantInviteService(
             )
         );
 
-        return Result<TenantInviteResponse>.Success(await MapAsync(row, created.Data.Url, created.Data.EmailSent));
+        return Result<TenantInviteResponse>.Success(
+            await MapAsync(row, created.Data.Url, created.Data.EmailSent)
+        );
     }
 
     public async Task<Result<List<TenantInviteResponse>>> ListAsync()
@@ -83,14 +94,16 @@ public class TenantInviteService(
             .Query()
             .IgnoreQueryFilters()
             .AsNoTracking()
-            .Where(i => i.OwnerId == null
-                        && i.DeletedAt == null
-                        && i.RevokedAt == null
-                        && i.ExpiresAt > now
-                        // `Uses < MaxUses` is NULL (false) in SQL when MaxUses is null, which would
-                        // hide every invite created before single-use was enforced — still valid,
-                        // still acceptable, but invisible.
-                        && (i.MaxUses == null || i.Uses < i.MaxUses))
+            .Where(i =>
+                i.OwnerId == null
+                && i.DeletedAt == null
+                && i.RevokedAt == null
+                && i.ExpiresAt > now
+                // `Uses < MaxUses` is NULL (false) in SQL when MaxUses is null, which would
+                // hide every invite created before single-use was enforced — still valid,
+                // still acceptable, but invisible.
+                && (i.MaxUses == null || i.Uses < i.MaxUses)
+            )
             .OrderByDescending(i => i.CreatedAt)
             .ToListAsync();
 
@@ -116,7 +129,9 @@ public class TenantInviteService(
 
         var resent = await invites.ResendAsync(id, rotate, writeAudit: false);
         if (!resent.IsSuccess || resent.Data is null)
-            return Result<TenantInviteResponse>.Failure(resent.Message ?? MessageKeys.Invite.NotFound);
+            return Result<TenantInviteResponse>.Failure(
+                resent.Message ?? MessageKeys.Invite.NotFound
+            );
 
         var refreshed = await LoadWorkspaceInviteAsync(id);
         if (refreshed is null)
@@ -136,7 +151,9 @@ public class TenantInviteService(
             )
         );
 
-        return Result<TenantInviteResponse>.Success(await MapAsync(refreshed, resent.Data.Url, resent.Data.EmailSent));
+        return Result<TenantInviteResponse>.Success(
+            await MapAsync(refreshed, resent.Data.Url, resent.Data.EmailSent)
+        );
     }
 
     public async Task<Result> RevokeAsync(int id)
@@ -155,7 +172,12 @@ public class TenantInviteService(
             return result;
 
         await audit.WriteAsync(
-            new AuditEntry(AuditActions.TenantInviteRevoked, AuditTargets.TenantInvite, invite.Id.ToString(), null)
+            new AuditEntry(
+                AuditActions.TenantInviteRevoked,
+                AuditTargets.TenantInvite,
+                invite.Id.ToString(),
+                null
+            )
         );
 
         return result;

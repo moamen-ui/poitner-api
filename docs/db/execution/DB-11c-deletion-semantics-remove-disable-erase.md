@@ -201,6 +201,7 @@ A new column that carries a person's e-mail or name is added here **and** to `Er
 | `usage_events.meta` (jsonb) | today nothing personal — no production writer passes `meta` (`UsageEventService.cs:40-44`; GLM E4) | kept; a future writer that stores PII must add a scrub line here |
 | `user_aliases` | old uuids → identity | kept (audit of the merge) |
 | `app_settings.key` demo throttle (`demo_email_<16-hex hash>_<yyyyMMdd>`, DB-17) | a hashed pseudonym of the e-mail, never the raw address (R14) | hashed since DB-17; rows deleted after 2 days by `IDemoService.SweepThrottleRowsAsync` (part of the 15-min demo sweep) |
+| billing text columns — `billing_payments.note/reference`, `discount_redemptions.` snapshots, `discount_codes.label/note`, `subscriptions.comp_reason` (DB-20, not yet deployed) | operator- or super-admin-typed free text, length-capped; never a person's e-mail or name by rule (R8.9) | kept by design (operator-authored, no PII by rule R8.9); `*_by`/`*_recorded_by`/`comped_by`/`requested_by`/`created_by` columns are `public_id` content references only (R14), same as every other `*_by` row above |
 
 **Legal hold (forward reference — agy A3, chair D10).** A later doc adds a per-workspace flag in
 `workspace_settings` that makes `EraseAsync` refuse with `Conflict` for any identity holding a live

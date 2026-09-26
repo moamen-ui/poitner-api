@@ -33,6 +33,7 @@ public class AuthService : IAuthService
     private readonly IDemoService? _demo;
     private readonly ILogger<AuthService>? _logger;
     private readonly IWorkspaceStateService? _workspaceState;
+    private readonly IEntitlementService? _entitlements;
 
     public AuthService(
         IUnitOfWork unitOfWork,
@@ -63,7 +64,11 @@ public class AuthService : IAuthService
         ILogger<AuthService>? logger = null,
         // DB-18: nullable-with-default, same seam as the others above — a null value (every existing
         // hand-rolled test construction) simply means RegisterAsync never sees a frozen workspace.
-        IWorkspaceStateService? workspaceState = null
+        IWorkspaceStateService? workspaceState = null,
+        // DB-20: nullable-with-default, same seam as the others above — only used to look up the
+        // Free plan id for a paid-plan signup's request shape; a null value falls back to the same
+        // query inline (RegisterAdminAsync), never a behaviour change.
+        IEntitlementService? entitlements = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -83,6 +88,7 @@ public class AuthService : IAuthService
         _demo = demo;
         _logger = logger;
         _workspaceState = workspaceState;
+        _entitlements = entitlements;
     }
 
     /// <summary>
@@ -1538,8 +1544,11 @@ public class AuthService : IAuthService
         }
 
         // Signup plan selector (workspace signup only). Free / none ⇒ today's flow (no subscription row;
-        // effective plan resolves to Free). A paid, active, non-hidden plan ⇒ create a subscription in
-        // PendingActivation; a super-admin activates it later (approval flip + IBillingProvider.Activate).
+        // effective plan resolves to Free). DB-20 §3.6e: a paid, active, non-hidden plan now parks a
+        // REQUEST at list price on Free (PlanId = Free's id, Status = PendingActivation,
+        // RequestedPlanId = the chosen plan) — the same non-comp shape InviteService's accept writes —
+        // instead of granting the paid entitlements before any payment (F-B1). A super admin later
+        // records the payment (or comps it via PATCH .../plan) to actually grant it.
         int? subscribedPlanId = null;
         if (request.PlanId is int planId)
         {
@@ -1558,14 +1567,32 @@ public class AuthService : IAuthService
             // the zero-write path (missing subscription ⇒ Free).
             if (plan != null && plan.Slug != "free")
             {
+                var freePlanId =
+                    _entitlements != null
+                        ? await _entitlements.GetFreePlanIdAsync()
+                        : (
+                            await _unitOfWork
+                                .Repository<Plan>()
+                                .Query()
+                                .AsNoTracking()
+                                .Where(p => p.Slug == "free" && p.DeletedAt == null)
+                                .Select(p => (int?)p.Id)
+                                .FirstOrDefaultAsync()
+                        ) ?? 0;
+
                 await _unitOfWork
                     .Repository<Subscription>()
                     .AddAsync(
                         new Subscription
                         {
                             OwnerId = workspaceId,
-                            PlanId = plan.Id,
+                            PlanId = freePlanId,
                             Status = SubscriptionStatus.PendingActivation,
+                            RequestedPlanId = plan.Id,
+                            RequestedAt = DateTime.UtcNow,
+                            RequestedBy = identity.PublicId,
+                            QuotedPrice = BillingMath.PeriodPrice(plan.PriceMonthly),
+                            QuotedCurrency = plan.Currency.Trim().ToUpperInvariant(),
                         }
                     );
                 await _unitOfWork.SaveChangesAsync();

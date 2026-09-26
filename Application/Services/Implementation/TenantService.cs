@@ -28,6 +28,7 @@ public class TenantService : ITenantService
     private readonly IBillingProvider _billing;
     private readonly IMembershipService _memberships;
     private readonly IAuditWriter _audit;
+    private readonly ICurrentUser? _currentUser;
 
     public TenantService(
         IUnitOfWork unitOfWork,
@@ -36,7 +37,12 @@ public class TenantService : ITenantService
         ISettingsService settings,
         IBillingProvider billing,
         IMembershipService memberships,
-        IAuditWriter? audit = null
+        IAuditWriter? audit = null,
+        // DB-20: nullable-with-default, same seam as `audit` above — only used to stamp
+        // ChangePlanAsync's CompedBy (the operator's public_id) on a complimentary grant; a null
+        // value (every existing hand-rolled test construction) means that write is skipped, which
+        // none of those tests assert on.
+        ICurrentUser? currentUser = null
     )
     {
         _unitOfWork = unitOfWork;
@@ -46,6 +52,7 @@ public class TenantService : ITenantService
         _billing = billing;
         _memberships = memberships;
         _audit = audit ?? NoopAuditWriter.Instance;
+        _currentUser = currentUser;
     }
 
     public async Task<Result<List<TenantResponse>>> ListAsync()
@@ -126,17 +133,38 @@ public class TenantService : ITenantService
                 s.OwnerId,
                 s.Status,
                 PlanName = s.Plan.Name,
+                s.RequestedPlanId,
+                s.QuotedPrice,
+                s.QuotedCurrency,
+                s.CurrentPeriodEnd,
+                s.IsComplimentary,
+                s.CompEndsAt,
             })
             .ToListAsync();
-        var subMap = subs.ToDictionary(x => x.OwnerId, x => (x.PlanName, x.Status));
+        var subMap = subs.ToDictionary(x => x.OwnerId, x => x);
+
+        // DB-20 §3.9: RequestedPlanId carries no navigation (§3.3 task 2) — batch-load names.
+        var requestedPlanIds = subs.Where(s => s.RequestedPlanId != null)
+            .Select(s => s.RequestedPlanId!.Value)
+            .Distinct()
+            .ToList();
+        var requestedPlanNames =
+            requestedPlanIds.Count == 0
+                ? new Dictionary<int, string>()
+                : await _unitOfWork
+                    .Repository<Plan>()
+                    .Query()
+                    .AsNoTracking()
+                    .Where(p => requestedPlanIds.Contains(p.Id))
+                    .ToDictionaryAsync(p => p.Id, p => p.Name);
 
         var responses = workspaces
             .Select(w =>
             {
                 adminMap.TryGetValue(w.Id, out var admin);
-                var (planName, status) = subMap.TryGetValue(w.Id, out var s)
-                    ? (s.PlanName, s.Status.ToString())
-                    : ("Free", (string?)null); // missing subscription ⇒ Free
+                var hasSub = subMap.TryGetValue(w.Id, out var s);
+                var planName = hasSub ? s!.PlanName : "Free"; // missing subscription ⇒ Free
+                var status = hasSub ? s!.Status.ToString() : (string?)null;
                 return new TenantResponse
                 {
                     Id = admin?.User.Id ?? 0,
@@ -163,6 +191,16 @@ public class TenantService : ITenantService
                     PausedAt = w.PausedAt,
                     PausedByOperator = w.PausedByOperator,
                     DeletionScheduledFor = w.DeletionScheduledFor,
+                    // DB-20 §3.9: billing v1 at-a-glance.
+                    RequestedPlanName =
+                        hasSub && s!.RequestedPlanId is int rpid
+                            ? requestedPlanNames.GetValueOrDefault(rpid)
+                            : null,
+                    QuotedPrice = hasSub ? s!.QuotedPrice : null,
+                    QuotedCurrency = hasSub ? s!.QuotedCurrency : null,
+                    CurrentPeriodEnd = hasSub ? s!.CurrentPeriodEnd : null,
+                    IsComplimentary = hasSub && s!.IsComplimentary,
+                    CompEndsAt = hasSub ? s!.CompEndsAt : null,
                 };
             })
             .ToList();
@@ -456,7 +494,12 @@ public class TenantService : ITenantService
         return Result.Success();
     }
 
-    public async Task<Result> ChangePlanAsync(Guid workspaceId, int planId)
+    public async Task<Result> ChangePlanAsync(
+        Guid workspaceId,
+        int planId,
+        string? compReason = null,
+        DateTime? compEndsAt = null
+    )
     {
         // F9: the subscription is already keyed by the workspace id directly — no admin membership
         // needs resolving at all here (unlike SetStatusAsync, which acts ON the admin's membership).
@@ -468,15 +511,36 @@ public class TenantService : ITenantService
 
         var tenantOwnerId = workspaceId;
 
-        // Plan is global (no filter) — plain query. Must exist, be active, not deleted.
+        // DB-20 §3.6e (F-B11): relaxed from IsActive to DeletedAt == null — an operator may assign
+        // ANY non-deleted plan, including hidden/inactive (e.g. a private enterprise plan).
         var plan = await _unitOfWork
             .Repository<Plan>()
             .Query()
             .AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Id == planId && p.DeletedAt == null && p.IsActive);
+            .FirstOrDefaultAsync(p => p.Id == planId && p.DeletedAt == null);
 
         if (plan == null)
             return Result.NotFound(MessageKeys.Plan.NotFound);
+
+        // Review findings #4/#5: comp fields and a resolved operator id only matter for the paid
+        // branch below (the one that actually persists them), but are checked here — before any
+        // Subscription mutation — so this service's own public contract is safe even when called
+        // from somewhere that skips ChangeTenantPlanRequestValidator (that validator covers the one
+        // HTTP route; this defends the method itself, per DB-RULES R20).
+        Guid? operatorId = null;
+        if (plan.PriceMonthly > 0)
+        {
+            if (compReason != null && compReason.Length > 200)
+                return Result.Failure(MessageKeys.Billing.CompReasonTooLong);
+            if (compEndsAt.HasValue && BillingMath.ToUtc(compEndsAt.Value) <= DateTime.UtcNow)
+                return Result.Failure(MessageKeys.Billing.CompEndsAtMustBeFuture);
+            // ck_subscriptions_comp_consistent requires comped_by whenever is_complimentary is true
+            // — an unresolved caller (e.g. a headless/service-token call with no ICurrentUser) must
+            // never reach the DbUpdateException that constraint would otherwise throw.
+            if (_currentUser?.Id is not Guid resolvedOperatorId)
+                return Result.Forbidden(MessageKeys.Common.Forbidden);
+            operatorId = resolvedOperatorId;
+        }
 
         // Upsert the tenant's subscription (one per tenant). Bypass the filter + match OwnerId.
         var sub = await _unitOfWork
@@ -486,23 +550,67 @@ public class TenantService : ITenantService
             .FirstOrDefaultAsync(s => s.OwnerId == tenantOwnerId && s.DeletedAt == null);
 
         var previousPlanId = sub?.PlanId;
+        var isNew = sub == null;
         if (sub == null)
         {
-            sub = new Subscription
-            {
-                OwnerId = tenantOwnerId,
-                PlanId = plan.Id,
-                Status = SubscriptionStatus.Active,
-            };
+            sub = new Subscription { OwnerId = tenantOwnerId, PlanId = plan.Id };
             await _unitOfWork.Repository<Subscription>().AddAsync(sub);
         }
         else
         {
             sub.PlanId = plan.Id;
+        }
+
+        // DB-20 §3.6e: release this workspace's own Pending redemption (if any) either way — an
+        // operator plan override supersedes whatever the workspace was quoted.
+        if (!isNew)
+        {
+            var pending = await _unitOfWork
+                .DiscountRedemptions.Where(r =>
+                    r.OwnerId == tenantOwnerId && r.Status == DiscountRedemptionStatus.Pending
+                )
+                .FirstOrDefaultAsync();
+            if (pending != null)
+            {
+                pending.Status = DiscountRedemptionStatus.Released;
+                pending.ReleasedAt = DateTime.UtcNow;
+                pending.ReleaseReason = RedemptionReleaseReason.OperatorPlanOverride;
+            }
+        }
+        sub.RequestedPlanId = null;
+        sub.RequestedAt = null;
+        sub.RequestedBy = null;
+        sub.QuotedPrice = null;
+        sub.QuotedCurrency = null;
+
+        string kind;
+        if (plan.PriceMonthly > 0)
+        {
+            sub.IsComplimentary = true;
+            sub.CompedAt = DateTime.UtcNow;
+            sub.CompedBy = operatorId;
+            sub.CompReason = compReason ?? "Assigned by operator";
+            sub.CompEndsAt = BillingMath.ToUtc(compEndsAt);
+            sub.Status = SubscriptionStatus.Active;
+            sub.CurrentPeriodEnd = null;
+            sub.RenewalReminderSentAt = null;
+            kind = "complimentary";
+        }
+        else
+        {
+            sub.IsComplimentary = false;
+            sub.CompedAt = null;
+            sub.CompedBy = null;
+            sub.CompReason = null;
+            sub.CompEndsAt = null;
+            sub.CurrentPeriodEnd = null;
             if (sub.Status is SubscriptionStatus.None or SubscriptionStatus.Canceled)
                 sub.Status = SubscriptionStatus.Active;
-            _unitOfWork.Repository<Subscription>().Update(sub);
+            kind = plan.Slug == "free" ? "free" : "assigned";
         }
+
+        if (!isNew)
+            _unitOfWork.Repository<Subscription>().Update(sub);
 
         // Route through the billing seam (Noop today — no HTTP; a real gateway plugs in here later).
         await _billing.ChangePlanAsync(sub, plan.Id);
@@ -518,7 +626,11 @@ public class TenantService : ITenantService
                 Before: previousPlanId is int prev
                     ? new Dictionary<string, string> { ["plan_id"] = prev.ToString() }
                     : null,
-                After: new Dictionary<string, string> { ["plan_id"] = plan.Id.ToString() }
+                After: new Dictionary<string, string>
+                {
+                    ["plan_id"] = plan.Id.ToString(),
+                    ["kind"] = kind,
+                }
             )
         );
 
@@ -662,6 +774,24 @@ public class TenantService : ITenantService
             await DeleteOwnedAsync<StatusPresentation>(x => x.OwnerId == workspaceId);
             await DeleteOwnedAsync<RoleTenantOverride>(x => x.OwnerId == workspaceId);
             await DeleteOwnedAsync<WorkspaceSetting>(x => x.OwnerId == workspaceId);
+
+            // DB-20 §3.6g: release every Pending redemption of this workspace BEFORE the subscription
+            // row goes — billing_payments/discount_redemptions themselves survive (R8.9, FK SET NULL)
+            // and are NOT added to HardDeleteOrder.
+            var pendingRedemptions = await _unitOfWork
+                .DiscountRedemptions.IgnoreQueryFilters()
+                .Where(r =>
+                    r.OwnerId == workspaceId && r.Status == DiscountRedemptionStatus.Pending
+                )
+                .ToListAsync();
+            var now = DateTime.UtcNow;
+            foreach (var r in pendingRedemptions)
+            {
+                r.Status = DiscountRedemptionStatus.Released;
+                r.ReleasedAt = now;
+                r.ReleaseReason = RedemptionReleaseReason.WorkspaceDeleted;
+            }
+
             await DeleteOwnedAsync<Subscription>(x => x.OwnerId == workspaceId);
             await DeleteOwnedAsync<ApiKey>(x => x.OwnerId == workspaceId);
             await DeleteOwnedAsync<DeviceLogin>(x => x.OwnerId == workspaceId);

@@ -413,6 +413,130 @@ namespace Pointer.Infrastructure.Migrations
                     b.ToTable("audit_events", (string)null);
                 });
 
+            modelBuilder.Entity("Pointer.Domain.Entity.BillingPayment", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("amount");
+
+                    b.Property<string>("Currency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<bool>("DiscountFirstApplied")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("discount_first_applied");
+
+                    b.Property<long?>("DiscountRedemptionId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("discount_redemption_id");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<int?>("Method")
+                        .HasColumnType("integer")
+                        .HasColumnName("method");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
+                    b.Property<Guid?>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<DateTime?>("PaidAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paid_at");
+
+                    b.Property<DateTime?>("PeriodEnd")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("period_end");
+
+                    b.Property<DateTime?>("PeriodStart")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("period_start");
+
+                    b.Property<int>("PlanId")
+                        .HasColumnType("integer")
+                        .HasColumnName("plan_id");
+
+                    b.Property<DateTime?>("PreviousPeriodEnd")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("previous_period_end");
+
+                    b.Property<int?>("PreviousPlanId")
+                        .HasColumnType("integer")
+                        .HasColumnName("previous_plan_id");
+
+                    b.Property<int?>("PreviousStatus")
+                        .HasColumnType("integer")
+                        .HasColumnName("previous_status");
+
+                    b.Property<decimal?>("QuotedAmount")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("quoted_amount");
+
+                    b.Property<DateTime>("RecordedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("recorded_at");
+
+                    b.Property<Guid>("RecordedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recorded_by");
+
+                    b.Property<string>("Reference")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("reference");
+
+                    b.Property<long?>("VoidsPaymentId")
+                        .HasColumnType("bigint")
+                        .HasColumnName("voids_payment_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DiscountRedemptionId");
+
+                    b.HasIndex("PlanId");
+
+                    b.HasIndex("PreviousPlanId");
+
+                    b.HasIndex("VoidsPaymentId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_billing_payments_voids_payment_id")
+                        .HasFilter("voids_payment_id IS NOT NULL");
+
+                    b.HasIndex("OwnerId", "RecordedAt")
+                        .IsDescending(false, true)
+                        .HasDatabaseName("ix_billing_payments_owner_recorded");
+
+                    b.ToTable("billing_payments", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_billing_payments_amounts", "amount >= 0 AND (quoted_amount IS NULL OR quoted_amount >= 0)");
+
+                            t.HasCheckConstraint("ck_billing_payments_currency", "currency ~ '^[A-Z]{3}$'");
+
+                            t.HasCheckConstraint("ck_billing_payments_first_applied", "NOT discount_first_applied OR discount_redemption_id IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_billing_payments_kind_shape", "(kind = 1 AND method IN (1, 2, 3) AND paid_at IS NOT NULL AND period_start IS NOT NULL AND period_end IS NOT NULL AND period_end > period_start AND previous_plan_id IS NOT NULL AND previous_status IS NOT NULL AND voids_payment_id IS NULL) OR (kind = 2 AND voids_payment_id IS NOT NULL AND method IS NULL AND paid_at IS NULL AND period_start IS NULL AND period_end IS NULL AND discount_redemption_id IS NULL AND NOT discount_first_applied)");
+                        });
+                });
+
             modelBuilder.Entity("Pointer.Domain.Entity.Comment", b =>
                 {
                     b.Property<int>("Id")
@@ -668,6 +792,242 @@ namespace Pointer.Infrastructure.Migrations
                     b.ToTable("device_logins", (string)null);
                 });
 
+            modelBuilder.Entity("Pointer.Domain.Entity.DiscountCode", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("code");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("Currency")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("deleted_at");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("deleted_by");
+
+                    b.Property<int>("Duration")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("duration");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind");
+
+                    b.Property<string>("Label")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)")
+                        .HasColumnName("label");
+
+                    b.Property<int?>("MaxRedemptions")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_redemptions");
+
+                    b.Property<string>("Note")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)")
+                        .HasColumnName("note");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("updated_by");
+
+                    b.Property<DateTime?>("ValidFrom")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("valid_from");
+
+                    b.Property<DateTime?>("ValidUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("valid_until");
+
+                    b.Property<decimal>("Value")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("value");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Code")
+                        .IsUnique()
+                        .HasDatabaseName("ux_discount_codes_code_live")
+                        .HasFilter("deleted_at IS NULL");
+
+                    b.ToTable("discount_codes", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_discount_codes_code_format", "code ~ '^[A-Z0-9][A-Z0-9_-]{2,31}$'");
+
+                            t.HasCheckConstraint("ck_discount_codes_duration", "duration IN (1, 2)");
+
+                            t.HasCheckConstraint("ck_discount_codes_max_redemptions", "max_redemptions IS NULL OR max_redemptions > 0");
+
+                            t.HasCheckConstraint("ck_discount_codes_value", "(kind = 1 AND value > 0 AND value <= 100 AND currency IS NULL) OR (kind = 2 AND value > 0 AND currency IS NOT NULL AND currency ~ '^[A-Z]{3}$')");
+
+                            t.HasCheckConstraint("ck_discount_codes_window", "valid_from IS NULL OR valid_until IS NULL OR valid_until > valid_from");
+                        });
+                });
+
+            modelBuilder.Entity("Pointer.Domain.Entity.DiscountCodePlan", b =>
+                {
+                    b.Property<int>("DiscountCodeId")
+                        .HasColumnType("integer")
+                        .HasColumnName("discount_code_id");
+
+                    b.Property<int>("PlanId")
+                        .HasColumnType("integer")
+                        .HasColumnName("plan_id");
+
+                    b.HasKey("DiscountCodeId", "PlanId")
+                        .HasName("pk_discount_code_plans");
+
+                    b.HasIndex("PlanId");
+
+                    b.ToTable("discount_code_plans", (string)null);
+                });
+
+            modelBuilder.Entity("Pointer.Domain.Entity.DiscountRedemption", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTime?>("AppliedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("applied_at");
+
+                    b.Property<string>("CodeSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("code_snapshot");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("CurrencySnapshot")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("currency_snapshot");
+
+                    b.Property<decimal>("DiscountAmount")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("discount_amount");
+
+                    b.Property<int>("DiscountCodeId")
+                        .HasColumnType("integer")
+                        .HasColumnName("discount_code_id");
+
+                    b.Property<int>("DurationSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_snapshot");
+
+                    b.Property<decimal>("FinalPrice")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("final_price");
+
+                    b.Property<int>("KindSnapshot")
+                        .HasColumnType("integer")
+                        .HasColumnName("kind_snapshot");
+
+                    b.Property<decimal>("OriginalPrice")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("original_price");
+
+                    b.Property<Guid?>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<int>("PlanId")
+                        .HasColumnType("integer")
+                        .HasColumnName("plan_id");
+
+                    b.Property<string>("PriceCurrency")
+                        .IsRequired()
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("price_currency");
+
+                    b.Property<int?>("ReleaseReason")
+                        .HasColumnType("integer")
+                        .HasColumnName("release_reason");
+
+                    b.Property<DateTime?>("ReleasedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("released_at");
+
+                    b.Property<int>("Status")
+                        .HasColumnType("integer")
+                        .HasColumnName("status");
+
+                    b.Property<decimal>("ValueSnapshot")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("value_snapshot");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_discount_redemptions_owner_pending")
+                        .HasFilter("status = 1");
+
+                    b.HasIndex("PlanId");
+
+                    b.HasIndex("DiscountCodeId", "OwnerId")
+                        .IsUnique()
+                        .HasDatabaseName("ux_discount_redemptions_code_owner_open")
+                        .HasFilter("status IN (1, 2)");
+
+                    b.HasIndex("DiscountCodeId", "Status")
+                        .HasDatabaseName("ix_discount_redemptions_code_status");
+
+                    b.ToTable("discount_redemptions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_discount_redemptions_amounts", "original_price >= 0 AND discount_amount >= 0 AND discount_amount <= original_price AND final_price = original_price - discount_amount AND price_currency ~ '^[A-Z]{3}$'");
+
+                            t.HasCheckConstraint("ck_discount_redemptions_status_shape", "(status = 1 AND applied_at IS NULL AND released_at IS NULL AND release_reason IS NULL) OR (status = 2 AND applied_at IS NOT NULL AND released_at IS NULL AND release_reason IS NULL) OR (status = 3 AND released_at IS NOT NULL AND release_reason IS NOT NULL)");
+                        });
+                });
+
             modelBuilder.Entity("Pointer.Domain.Entity.ExtensionSite", b =>
                 {
                     b.Property<int>("Id")
@@ -803,6 +1163,15 @@ namespace Pointer.Infrastructure.Migrations
                         .HasColumnType("character varying(64)")
                         .HasColumnName("code");
 
+                    b.Property<DateTime?>("CompEndsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("comp_ends_at");
+
+                    b.Property<string>("CompReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("comp_reason");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -832,6 +1201,12 @@ namespace Pointer.Infrastructure.Migrations
                     b.Property<DateTime>("ExpiresAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("expires_at");
+
+                    b.Property<bool>("IsComplimentary")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_complimentary");
 
                     b.Property<int?>("MaxUses")
                         .HasColumnType("integer")
@@ -882,7 +1257,10 @@ namespace Pointer.Infrastructure.Migrations
 
                     b.HasIndex("RoleId");
 
-                    b.ToTable("invites", (string)null);
+                    b.ToTable("invites", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_invites_comp_consistent", "(is_complimentary OR (comp_reason IS NULL AND comp_ends_at IS NULL)) AND (NOT is_complimentary OR (owner_id IS NULL AND plan_id IS NOT NULL))");
+                        });
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.Notification", b =>
@@ -1946,6 +2324,23 @@ namespace Pointer.Infrastructure.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("billing_provider");
 
+                    b.Property<DateTime?>("CompEndsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("comp_ends_at");
+
+                    b.Property<string>("CompReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("comp_reason");
+
+                    b.Property<DateTime?>("CompedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("comped_at");
+
+                    b.Property<Guid?>("CompedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("comped_by");
+
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -1976,6 +2371,12 @@ namespace Pointer.Infrastructure.Migrations
                         .HasColumnType("character varying(128)")
                         .HasColumnName("external_subscription_id");
 
+                    b.Property<bool>("IsComplimentary")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_complimentary");
+
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid")
                         .HasColumnName("owner_id");
@@ -1983,6 +2384,31 @@ namespace Pointer.Infrastructure.Migrations
                     b.Property<int>("PlanId")
                         .HasColumnType("integer")
                         .HasColumnName("plan_id");
+
+                    b.Property<string>("QuotedCurrency")
+                        .HasMaxLength(3)
+                        .HasColumnType("character varying(3)")
+                        .HasColumnName("quoted_currency");
+
+                    b.Property<decimal?>("QuotedPrice")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("quoted_price");
+
+                    b.Property<DateTime?>("RenewalReminderSentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("renewal_reminder_sent_at");
+
+                    b.Property<DateTime?>("RequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("requested_at");
+
+                    b.Property<Guid?>("RequestedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("requested_by");
+
+                    b.Property<int?>("RequestedPlanId")
+                        .HasColumnType("integer")
+                        .HasColumnName("requested_plan_id");
 
                     b.Property<int>("Status")
                         .HasColumnType("integer")
@@ -2002,6 +2428,14 @@ namespace Pointer.Infrastructure.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CompEndsAt")
+                        .HasDatabaseName("ix_subscriptions_comp_ends_at")
+                        .HasFilter("comp_ends_at IS NOT NULL");
+
+                    b.HasIndex("CurrentPeriodEnd")
+                        .HasDatabaseName("ix_subscriptions_current_period_end")
+                        .HasFilter("current_period_end IS NOT NULL");
+
                     b.HasIndex("OwnerId")
                         .IsUnique()
                         .HasDatabaseName("ux_subscriptions_owner_live")
@@ -2009,7 +2443,18 @@ namespace Pointer.Infrastructure.Migrations
 
                     b.HasIndex("PlanId");
 
-                    b.ToTable("subscriptions", (string)null);
+                    b.HasIndex("RequestedPlanId");
+
+                    b.ToTable("subscriptions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_subscriptions_comp_consistent", "(is_complimentary = (comped_at IS NOT NULL)) AND ((comped_at IS NULL) = (comped_by IS NULL)) AND (is_complimentary OR (comp_reason IS NULL AND comp_ends_at IS NULL))");
+
+                            t.HasCheckConstraint("ck_subscriptions_comp_no_request", "NOT (is_complimentary AND requested_plan_id IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_subscriptions_quote_valid", "quoted_price IS NULL OR (quoted_price >= 0 AND quoted_currency ~ '^[A-Z]{3}$')");
+
+                            t.HasCheckConstraint("ck_subscriptions_request_consistent", "(requested_plan_id IS NULL) = (requested_at IS NULL) AND (requested_plan_id IS NULL) = (requested_by IS NULL) AND (requested_plan_id IS NULL) = (quoted_price IS NULL) AND (requested_plan_id IS NULL) = (quoted_currency IS NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.UsageDaily", b =>
@@ -2641,6 +3086,40 @@ namespace Pointer.Infrastructure.Migrations
                         .HasConstraintName("fk_audit_events_workspaces_owner_id");
                 });
 
+            modelBuilder.Entity("Pointer.Domain.Entity.BillingPayment", b =>
+                {
+                    b.HasOne("Pointer.Domain.Entity.DiscountRedemption", null)
+                        .WithMany()
+                        .HasForeignKey("DiscountRedemptionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_billing_payments_discount_redemptions_discount_redemption_id");
+
+                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_billing_payments_workspaces_owner_id");
+
+                    b.HasOne("Pointer.Domain.Entity.Plan", null)
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_billing_payments_plans_plan_id");
+
+                    b.HasOne("Pointer.Domain.Entity.Plan", null)
+                        .WithMany()
+                        .HasForeignKey("PreviousPlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_billing_payments_plans_previous_plan_id");
+
+                    b.HasOne("Pointer.Domain.Entity.BillingPayment", null)
+                        .WithMany()
+                        .HasForeignKey("VoidsPaymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_billing_payments_billing_payments_voids_payment_id");
+                });
+
             modelBuilder.Entity("Pointer.Domain.Entity.Comment", b =>
                 {
                     b.HasOne("Pointer.Domain.Entity.Workspace", null)
@@ -2781,6 +3260,46 @@ namespace Pointer.Infrastructure.Migrations
                         .HasForeignKey("OwnerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .HasConstraintName("fk_device_logins_workspaces_owner_id");
+                });
+
+            modelBuilder.Entity("Pointer.Domain.Entity.DiscountCodePlan", b =>
+                {
+                    b.HasOne("Pointer.Domain.Entity.DiscountCode", null)
+                        .WithMany("PlanScopes")
+                        .HasForeignKey("DiscountCodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_discount_code_plans_discount_codes_discount_code_id");
+
+                    b.HasOne("Pointer.Domain.Entity.Plan", null)
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_discount_code_plans_plans_plan_id");
+                });
+
+            modelBuilder.Entity("Pointer.Domain.Entity.DiscountRedemption", b =>
+                {
+                    b.HasOne("Pointer.Domain.Entity.DiscountCode", null)
+                        .WithMany()
+                        .HasForeignKey("DiscountCodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_discount_redemptions_discount_codes_discount_code_id");
+
+                    b.HasOne("Pointer.Domain.Entity.Workspace", null)
+                        .WithMany()
+                        .HasForeignKey("OwnerId")
+                        .OnDelete(DeleteBehavior.SetNull)
+                        .HasConstraintName("fk_discount_redemptions_workspaces_owner_id");
+
+                    b.HasOne("Pointer.Domain.Entity.Plan", null)
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired()
+                        .HasConstraintName("fk_discount_redemptions_plans_plan_id");
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.ExtensionSite", b =>
@@ -3203,6 +3722,12 @@ namespace Pointer.Infrastructure.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("Pointer.Domain.Entity.Plan", null)
+                        .WithMany()
+                        .HasForeignKey("RequestedPlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasConstraintName("fk_subscriptions_plans_requested_plan_id");
+
                     b.Navigation("Plan");
                 });
 
@@ -3316,6 +3841,11 @@ namespace Pointer.Infrastructure.Migrations
             modelBuilder.Entity("Pointer.Domain.Entity.Comment", b =>
                 {
                     b.Navigation("Replies");
+                });
+
+            modelBuilder.Entity("Pointer.Domain.Entity.DiscountCode", b =>
+                {
+                    b.Navigation("PlanScopes");
                 });
 
             modelBuilder.Entity("Pointer.Domain.Entity.PageContextSnapshot", b =>

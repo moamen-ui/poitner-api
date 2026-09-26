@@ -61,4 +61,14 @@ public class Invite : BaseEntity
     /// invitee may override it; it is a convenience, not a constraint.
     /// </summary>
     public string? DisplayName { get; set; }
+
+    // ── DB-20: new-workspace invites only ──
+
+    /// <summary>Comp invite: accept grants <see cref="PlanId"/> for free (Active, comp-stamped)
+    /// instead of parking a request. Requires a live <see cref="PlanId"/> with a positive price.</summary>
+    public bool IsComplimentary { get; set; }
+
+    public string? CompReason { get; set; }
+
+    public DateTime? CompEndsAt { get; set; }
 }

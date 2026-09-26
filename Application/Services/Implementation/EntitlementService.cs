@@ -151,6 +151,9 @@ public class EntitlementService : IEntitlementService
         return result;
     }
 
+    /// <inheritdoc />
+    public Task<int> GetFreePlanIdAsync() => FreePlanIdAsync();
+
     private async Task<int> FreePlanIdAsync()
     {
         if (_freePlanId is int id)

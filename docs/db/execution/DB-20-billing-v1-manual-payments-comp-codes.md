@@ -14,7 +14,8 @@ column names, route names frozen once shipped), R11, R13, **R14** (every `*_by` 
 workspace views redact the operator), R18 (billing data is metadata, not content — operator reads need no impersonation), **R19** (new mutating
 actions are freeze-gated by default), **new R20 (money)**.
 **Class: Additive + one R4-constraint trigger migration** (nothing dropped, renamed or narrowed; no data backfill). **Status: written 2026-09-25,
-not implemented.** Owner decisions F-B1…F-B14 (§3.12) proceed on the recommended defaults unless the owner says otherwise.
+backend implemented 2026-09-26 (branch `feat/db-20-billing-v1`) — not yet R11-rehearsed or deployed (§9 release steps remain: prod pre-checks,
+rehearsal, contract deploy).** Owner decisions F-B1…F-B14 (§3.12) proceeded on the recommended defaults (no owner override relayed).
 
 **Dependencies.** DB-03 (`workspaces` + FKs), DB-11a (memberships), DB-12 (audit + append-only precedent), DB-18 (lifecycle guard, freeze filter).
 Planned against `main` @ `4da0091`, **83 migrations**, newest `20260924051230_ClearUsersRoleIdForMembers`. Independent of DB-19 (WS-NEW); if DB-19
@@ -609,15 +610,15 @@ workspace export of billing data.
 
 ## 11. Non-schema checklist (API / service / dashboard)
 
-- [ ] Services: `BillingService`, `BillingPeriodService`, `DiscountCodeService`, `BillingMath`; extracted `GetFreePlanIdAsync`; hosted `BillingPeriodJob` + three e-mail templates (en, ar).
-- [ ] Controllers: `BillingController` (`Billing`), `DiscountCodesController` (`DiscountCodes`), five `TenantsController` actions; inner-type `ProducesResponseType`;
+- [x] Services: `BillingService`, `BillingPeriodService`, `DiscountCodeService`, `BillingMath`; extracted `GetFreePlanIdAsync`; hosted `BillingPeriodJob` + three e-mail templates (en, ar).
+- [x] Controllers: `BillingController` (`Billing`), `DiscountCodesController` (`DiscountCodes`), five `TenantsController` actions; inner-type `ProducesResponseType`;
       `orval.config.ts` tags added (a missing tag silently generates nothing).
-- [ ] Existing flows changed: register-admin paid plan, invite accept (comp / non-comp), tenant invite create (comp fields), `PATCH …/plan` (comp semantics,
+- [x] Existing flows changed: register-admin paid plan, invite accept (comp / non-comp), tenant invite create (comp fields), `PATCH …/plan` (comp semantics,
       any plan), hard delete (release pending), plan delete in-use count, plan currency validator, `TenantResponse` fields.
-- [ ] Settings: `billing_grace_days` (7), `billing_reminder_days` (3) constants in `ISettingsService`; config `Billing:IntervalMinutes` (60).
-- [ ] Audit: 10 actions, 1 target, 6 whitelist keys; `[NoAudit]` on quote.
-- [ ] DB-11c §3.4 erase-inventory row; DB-13 §3.4 unchanged (no content table).
-- [ ] **Dashboard tasks** (dashboard-agent, once per phase): workspace **Billing** page (current plan/status/period, comp badge, pending request with quote and
+- [x] Settings: `billing_grace_days` (7), `billing_reminder_days` (3) constants in `ISettingsService`; config `Billing:IntervalMinutes` (60).
+- [x] Audit: 10 actions, 1 target, 6 whitelist keys; `[NoAudit]` on quote.
+- [x] DB-11c §3.4 erase-inventory row; DB-13 §3.4 unchanged (no content table).
+- [ ] **Dashboard tasks** (dashboard-agent, once per phase; NOT done here — this pass is backend-only): workspace **Billing** page (current plan/status/period, comp badge, pending request with quote and
       "cancel request", plan picker with reference-code field and live quote, payment history without operator notes, past-due banner with grace end); super-admin
       **tenant billing drawer** (summary, "Mark as paid" form: amount prefilled with the quote, currency, paid date, method, reference, note; payment list with "Void" on the
       latest; reject request; end comp); **plan assignment dialog** gains comp reason + optional end date; **tenant invite form** gains "Complimentary" + reason + end date;
@@ -625,5 +626,12 @@ workspace export of billing data.
       plan scope multi-select, label, note; drill-down of redemptions with workspace, plan, prices, status). Tenants list shows requested plan / quote / period end / comp.
       All strings via i18n in every locale; helper text on note/reference/label: "Do not enter personal data". The quote call is rate-limited (`danger`,
       10 / 10 min): call it on an explicit "Apply code" click and on plan change, never per keystroke.
+      **Post-review addendum:** the plan picker's data source is `GET /api/admin/billing/plans`
+      (`BillingController`, `[Tags("Billing")]`, `[NoAudit]`) — `BillablePlanResponse { id, slug, name,
+      price, currency, interval, featureBullets, isCurrent }`, the live/active/non-hidden plans this
+      workspace may quote/request, ordered by `SortOrder`. Do not use `GET /api/admin/plans` (SuperAdmin
+      -only, 403s for a Workspace Admin) or `GET /api/plans` (anonymous marketing catalog — omits `id`
+      on purpose, so a quote/request call cannot be built from it) for this picker.
 - [ ] Rebranding agent: new tables/columns/routes/settings keys are brand-neutral; e-mail templates are branding-aware — invoke the rebranding-agent when the templates land
-      (they are customer-visible).
+      (they are customer-visible). **NOT done in this pass** — flagged for the orchestrator; the new surfaces (tables/columns/routes/settings keys/templates) are already
+      brand-neutral by construction (reviewed while writing them), but the agent itself has not been invoked to record them in the rebranding plan inventory.

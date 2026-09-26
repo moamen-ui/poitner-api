@@ -37,4 +37,10 @@ public interface IEntitlementService
 
     /// <summary>Boolean feature gate for an explicit tenant.</summary>
     Task<Result> EnforceFlagAsync(Guid tenantId, string key);
+
+    /// <summary>DB-20 §3.6: the Free plan's id (slug <c>"free"</c>, not deleted). Extracted from the
+    /// private lookup this service already had, so billing code needing "the Free plan id" (to
+    /// create/park a subscription on it) uses the same one lookup as entitlement resolution — never
+    /// a second copy. Cached per request, like <see cref="GetForTenantAsync"/>.</summary>
+    Task<int> GetFreePlanIdAsync();
 }

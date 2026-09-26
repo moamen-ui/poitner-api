@@ -75,6 +75,10 @@ public class AppDbContext(
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<ImpersonationSession> ImpersonationSessions => Set<ImpersonationSession>();
     public DbSet<UserRecoveryCode> UserRecoveryCodes => Set<UserRecoveryCode>();
+    public DbSet<DiscountCode> DiscountCodes => Set<DiscountCode>();
+    public DbSet<DiscountCodePlan> DiscountCodePlans => Set<DiscountCodePlan>();
+    public DbSet<DiscountRedemption> DiscountRedemptions => Set<DiscountRedemption>();
+    public DbSet<BillingPayment> BillingPayments => Set<BillingPayment>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -332,6 +336,23 @@ public class AppDbContext(
                 || (currentUser.TenantId == null && !strict && e.OwnerId == null)
             );
 
+        // DB-20 R8.9: financial ledger tables — strict-own copy of the AuditEvent filter. Rows
+        // survive a hard-deleted workspace (owner_id → NULL via FK SET NULL); NULL-owner rows are
+        // operator-level, super-admin-only in production (strict=true), exactly like AuditEvent.
+        b.Entity<BillingPayment>()
+            .HasQueryFilter(e =>
+                currentUser.IsSuperAdmin
+                || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
+                || (currentUser.TenantId == null && !strict && e.OwnerId == null)
+            );
+        b.Entity<DiscountRedemption>()
+            .HasQueryFilter(e =>
+                currentUser.IsSuperAdmin
+                || (currentUser.TenantId != null && e.OwnerId == currentUser.TenantId)
+                || (currentUser.TenantId == null && !strict && e.OwnerId == null)
+            );
+        // DiscountCode / DiscountCodePlan: global catalog, no owner_id, no filter — like Plan.
+
         // DeviceLogin: deliberately NO query filter — exempt from tenant isolation. /device/start
         // and /device/poll are anonymous (no session, let alone a tenant claim) and OwnerId is only
         // known once a signed-in user approves the row, so a strict-own filter would hide every
@@ -372,6 +393,50 @@ public class AppDbContext(
 
         // UserAlias: no query filter. It is a lookup table keyed by a uuid the caller already
         // holds, joined to `users`, which is filtered — same reasoning as Workspace. DB-11a.
+
+        // DB-20 R20: regex CHECK constraints using Postgres's `~` operator. SQLite's parser rejects
+        // `~` as a binary operator outright (a genuine syntax error at CREATE TABLE — confirmed:
+        // `sqlite3 "CREATE TABLE t (x TEXT CHECK (x ~ '^[A-Z]{3}$'))"` → "near '~': syntax error"),
+        // unlike ck_workspaces_name_not_blank's `btrim()` call, which is valid SQLite call syntax
+        // even though the function itself needs SqliteBtrimFunctionInterceptor to actually run.
+        // No such fix exists for a rejected operator, so these five are Npgsql-only: every
+        // Sqlite-backed unit test skips DB-level enforcement of the format (service-level
+        // validation still applies; Db20BillingPostgresTests exercises the real constraint).
+        // Migrations are unaffected — `dotnet ef migrations add`/`has-pending-model-changes` both
+        // run against ConnectionStrings__Default (Postgres).
+        if (Database.ProviderName == "Npgsql.EntityFrameworkCore.PostgreSQL")
+        {
+            b.Entity<Subscription>()
+                .ToTable(t =>
+                    t.HasCheckConstraint(
+                        "ck_subscriptions_quote_valid",
+                        "quoted_price IS NULL OR (quoted_price >= 0 AND quoted_currency ~ '^[A-Z]{3}$')"
+                    )
+                );
+            b.Entity<DiscountCode>()
+                .ToTable(t =>
+                {
+                    t.HasCheckConstraint(
+                        "ck_discount_codes_code_format",
+                        "code ~ '^[A-Z0-9][A-Z0-9_-]{2,31}$'"
+                    );
+                    t.HasCheckConstraint(
+                        "ck_discount_codes_value",
+                        "(kind = 1 AND value > 0 AND value <= 100 AND currency IS NULL) OR (kind = 2 AND value > 0 AND currency IS NOT NULL AND currency ~ '^[A-Z]{3}$')"
+                    );
+                });
+            b.Entity<DiscountRedemption>()
+                .ToTable(t =>
+                    t.HasCheckConstraint(
+                        "ck_discount_redemptions_amounts",
+                        "original_price >= 0 AND discount_amount >= 0 AND discount_amount <= original_price AND final_price = original_price - discount_amount AND price_currency ~ '^[A-Z]{3}$'"
+                    )
+                );
+            b.Entity<BillingPayment>()
+                .ToTable(t =>
+                    t.HasCheckConstraint("ck_billing_payments_currency", "currency ~ '^[A-Z]{3}$'")
+                );
+        }
     }
 
     // Entities whose CreatedAt must survive the SaveChangesAsync stamping loop (the comment-import
@@ -396,6 +461,21 @@ public class AppDbContext(
         )
             throw new InvalidOperationException(
                 "audit_events is append-only (DB-12): update/delete is not allowed."
+            );
+    }
+
+    /// <summary>DB-20: billing_payments is append-only (R17, the second such table). The Postgres
+    /// trigger is the authority; this is the early, provider-agnostic error — same rationale as
+    /// <see cref="EnforceAuditEventsAppendOnly"/>.</summary>
+    private void EnforceBillingPaymentsAppendOnly()
+    {
+        if (
+            ChangeTracker
+                .Entries<BillingPayment>()
+                .Any(e => e.State is EntityState.Modified or EntityState.Deleted)
+        )
+            throw new InvalidOperationException(
+                "billing_payments is append-only (DB-20): update/delete is not allowed."
             );
     }
 
@@ -481,6 +561,7 @@ public class AppDbContext(
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         EnforceAuditEventsAppendOnly();
+        EnforceBillingPaymentsAppendOnly();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
@@ -490,6 +571,7 @@ public class AppDbContext(
     )
     {
         EnforceAuditEventsAppendOnly();
+        EnforceBillingPaymentsAppendOnly();
         EnforcePlatformRoleInvariant();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, ct);
     }
@@ -497,6 +579,7 @@ public class AppDbContext(
     public override Task<int> SaveChangesAsync(CancellationToken ct = default)
     {
         EnforceAuditEventsAppendOnly();
+        EnforceBillingPaymentsAppendOnly();
         EnforcePlatformRoleInvariant();
 
         var now = DateTime.UtcNow;

@@ -45,13 +45,16 @@ test('R1-08-03 ⛓ — invited plan is applied and active on the minted workspac
     planId = planRes.data.id;
     expect(planId).toBeTruthy();
 
-    // 2. Create invite carrying the planId
+    // 2. Create invite carrying the planId. DB-20 (F-B10): a paid plan is only active on accept
+    // when the invite is complimentary; a non-comp paid invite starts on Free + pending payment.
     const inviteRes = await postRaw(
       '/api/admin/tenants/invites',
       {
         email,
         displayName: 'Plan Co',
         planId,
+        complimentary: true,
+        compReason: 'e2e R1-08-03',
       },
       { token: superAdmin.token },
     );
@@ -94,6 +97,7 @@ test('R1-08-03 ⛓ — invited plan is applied and active on the minted workspac
     expect(tenant).toBeTruthy();
     expect(tenant.planName).toBe(planName);
     expect(tenant.subscriptionStatus).toBe('Active');
+    expect(tenant.isComplimentary).toBe(true);
 
     // 6. Invitee can immediately create a project with no approval step
     const projRes = await postRaw(

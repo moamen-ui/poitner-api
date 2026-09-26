@@ -8,6 +8,7 @@ using Pointer.Application.Services.Implementation;
 using Pointer.Application.Services.Interfaces;
 using Pointer.Domain.Entity;
 using Pointer.Domain.Enums;
+using Pointer.Domain.ValueObjects;
 using Pointer.Infrastructure;
 using Pointer.Infrastructure.Repository;
 using Xunit;
@@ -2098,5 +2099,337 @@ public class InviteServiceTests
         Assert.True(result.Data!.EmailLocked);
         // The raw email must NOT be present in the response DTO.
         Assert.Null(result.Data.GetType().GetProperty("Email")?.GetValue(result.Data));
+    }
+
+    // ── DB-20 §6 test 7: new-workspace invite accept — comp / non-comp / Free ──────────────
+
+    /// <summary>Builds an InviteService with a REAL EntitlementService (not the pass-through fake
+    /// BuildService always wires) — these three tests assert the exact Free-plan id a subscription
+    /// row was written with, which only means something against the real lookup.</summary>
+    private static InviteService BuildServiceWithRealEntitlements(
+        ICurrentUser user,
+        AppDbContext db
+    )
+    {
+        var uow = new UnitOfWork(db);
+        return new InviteService(
+            uow,
+            user,
+            new FakePasswordHasher(),
+            new FakeTokenService(),
+            new FakeSettings(),
+            new EntitlementService(uow, user, new FakeSettings()),
+            new SpyEmailService(),
+            new FakeBrandingService(),
+            new MembershipService(uow)
+        );
+    }
+
+    [Fact]
+    public async Task AcceptNewWorkspace_Complimentary_GrantsActiveCompRow()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        int planId;
+        Guid inviterPublicId = Guid.NewGuid();
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed.Roles.Add(
+                new Role
+                {
+                    Name = "Workspace Admin",
+                    GrantsAdmin = true,
+                    IsActive = true,
+                    IsSystem = true,
+                }
+            );
+            var plan = new Plan
+            {
+                Name = "Pro",
+                Slug = "pro",
+                IsActive = true,
+                DisplayState = PlanDisplayState.Visible,
+                PriceMonthly = 49m,
+                Currency = "USD",
+                Entitlements = new PlanEntitlements(),
+            };
+            seed.Plans.Add(plan);
+            seed.SaveChanges();
+            planId = plan.Id;
+        }
+        var inviteId = SeedInvite(
+            dbName,
+            Guid.Empty,
+            i =>
+            {
+                i.OwnerId = null;
+                i.PlanId = planId;
+                i.IsComplimentary = true;
+                i.CompReason = "Design partner";
+                i.CreatedBy = inviterPublicId;
+            }
+        );
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser();
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildServiceWithRealEntitlements(anon, db);
+
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "vip@newco.com",
+                Password = "password123",
+                DisplayName = "VIP Founder",
+            }
+        );
+        Assert.True(result.IsSuccess, result.Message);
+
+        var sub = db.Subscriptions.IgnoreQueryFilters().Single();
+        Assert.Equal(planId, sub.PlanId);
+        Assert.Equal(SubscriptionStatus.Active, sub.Status);
+        Assert.True(sub.IsComplimentary);
+        Assert.Equal(inviterPublicId, sub.CompedBy);
+        Assert.Equal("Design partner", sub.CompReason);
+        Assert.Null(sub.RequestedPlanId);
+    }
+
+    // ── Review findings #2, #4: new-workspace invite CREATE — comp field UTC/validation ──────
+
+    private static int SeedProPlan(string dbName)
+    {
+        using var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName);
+        var plan = new Plan
+        {
+            Name = "Pro",
+            Slug = "pro",
+            IsActive = true,
+            DisplayState = PlanDisplayState.Visible,
+            PriceMonthly = 49m,
+            Currency = "USD",
+            Entitlements = new PlanEntitlements(),
+        };
+        seed.Plans.Add(plan);
+        seed.SaveChanges();
+        return plan.Id;
+    }
+
+    [Fact]
+    public async Task CreateNewWorkspaceInvite_Complimentary_CompEndsAtConvertedToUtc()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var planId = SeedProPlan(dbName);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var db = BuildContext(superAdmin, dbName);
+        var svc = BuildService(superAdmin, db);
+
+        // Review finding #2: System.Text.Json deserializes an offset-less ISO timestamp as
+        // DateTimeKind.Unspecified — Npgsql would otherwise throw InvalidCastException persisting
+        // this straight through to invites.comp_ends_at (timestamptz).
+        var unspecified = DateTime.SpecifyKind(
+            DateTime.UtcNow.AddDays(30),
+            DateTimeKind.Unspecified
+        );
+
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest
+            {
+                CreateNewWorkspace = true,
+                Email = "vip@newco.test",
+                PlanId = planId,
+                Complimentary = true,
+                CompReason = "VIP",
+                CompEndsAt = unspecified,
+            }
+        );
+
+        Assert.True(result.IsSuccess, result.Message);
+        var stored = db.Invites.IgnoreQueryFilters().Single();
+        Assert.Equal(DateTimeKind.Utc, stored.CompEndsAt!.Value.Kind);
+    }
+
+    [Fact]
+    public async Task CreateNewWorkspaceInvite_CompReasonTooLong_Rejected()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var planId = SeedProPlan(dbName);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var db = BuildContext(superAdmin, dbName);
+        var svc = BuildService(superAdmin, db);
+
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest
+            {
+                CreateNewWorkspace = true,
+                Email = "vip2@newco.test",
+                PlanId = planId,
+                Complimentary = true,
+                CompReason = new string('x', 201),
+            }
+        );
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Billing.CompReasonTooLong, result.Message);
+        Assert.Empty(db.Invites.IgnoreQueryFilters().ToList());
+    }
+
+    [Fact]
+    public async Task CreateNewWorkspaceInvite_CompEndsAtInPast_Rejected()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        var planId = SeedProPlan(dbName);
+
+        var superAdmin = new FakeCurrentUser { Id = Guid.NewGuid(), IsSuperAdmin = true };
+        using var db = BuildContext(superAdmin, dbName);
+        var svc = BuildService(superAdmin, db);
+
+        var result = await svc.CreateAsync(
+            new CreateInviteRequest
+            {
+                CreateNewWorkspace = true,
+                Email = "vip3@newco.test",
+                PlanId = planId,
+                Complimentary = true,
+                CompEndsAt = DateTime.UtcNow.AddDays(-1),
+            }
+        );
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(MessageKeys.Billing.CompEndsAtMustBeFuture, result.Message);
+        Assert.Empty(db.Invites.IgnoreQueryFilters().ToList());
+    }
+
+    [Fact]
+    public async Task AcceptNewWorkspace_NonCompPaidPlan_ParksRequestAtListPrice()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        int planId;
+        int freeId;
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed.Roles.Add(
+                new Role
+                {
+                    Name = "Workspace Admin",
+                    GrantsAdmin = true,
+                    IsActive = true,
+                    IsSystem = true,
+                }
+            );
+            var free = new Plan
+            {
+                Name = "Free",
+                Slug = "free",
+                IsActive = true,
+                DisplayState = PlanDisplayState.Visible,
+                Entitlements = new PlanEntitlements(),
+            };
+            var plan = new Plan
+            {
+                Name = "Pro",
+                Slug = "pro",
+                IsActive = true,
+                DisplayState = PlanDisplayState.Visible,
+                PriceMonthly = 49m,
+                Currency = "USD",
+                Entitlements = new PlanEntitlements(),
+            };
+            seed.Plans.AddRange(free, plan);
+            seed.SaveChanges();
+            planId = plan.Id;
+            freeId = free.Id;
+        }
+        var inviteId = SeedInvite(
+            dbName,
+            Guid.Empty,
+            i =>
+            {
+                i.OwnerId = null;
+                i.PlanId = planId;
+            }
+        );
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser();
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildServiceWithRealEntitlements(anon, db);
+
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "founder@newco.com",
+                Password = "password123",
+                DisplayName = "Founder",
+            }
+        );
+        Assert.True(result.IsSuccess, result.Message);
+
+        var sub = db.Subscriptions.IgnoreQueryFilters().Single();
+        Assert.Equal(freeId, sub.PlanId);
+        Assert.Equal(SubscriptionStatus.PendingActivation, sub.Status);
+        Assert.False(sub.IsComplimentary);
+        Assert.Equal(planId, sub.RequestedPlanId);
+        Assert.Equal(49m, sub.QuotedPrice);
+        Assert.Equal("USD", sub.QuotedCurrency);
+        Assert.NotNull(sub.RequestedBy);
+    }
+
+    [Fact]
+    public async Task AcceptNewWorkspace_FreePlan_NoSubscriptionRow()
+    {
+        var dbName = Guid.NewGuid().ToString();
+        int freeId;
+        using (var seed = BuildContext(new FakeCurrentUser { IsSuperAdmin = true }, dbName))
+        {
+            seed.Roles.Add(
+                new Role
+                {
+                    Name = "Workspace Admin",
+                    GrantsAdmin = true,
+                    IsActive = true,
+                    IsSystem = true,
+                }
+            );
+            var free = new Plan
+            {
+                Name = "Free",
+                Slug = "free",
+                IsActive = true,
+                DisplayState = PlanDisplayState.Visible,
+                Entitlements = new PlanEntitlements(),
+            };
+            seed.Plans.Add(free);
+            seed.SaveChanges();
+            freeId = free.Id;
+        }
+        var inviteId = SeedInvite(
+            dbName,
+            Guid.Empty,
+            i =>
+            {
+                i.OwnerId = null;
+                i.PlanId = freeId;
+            }
+        );
+        var code = CodeOf(dbName, inviteId);
+
+        var anon = new FakeCurrentUser();
+        using var db = BuildContext(anon, dbName);
+        var svc = BuildServiceWithRealEntitlements(anon, db);
+
+        var result = await svc.AcceptAsync(
+            new AcceptInviteRequest
+            {
+                Code = code,
+                Email = "founder@newco.com",
+                Password = "password123",
+                DisplayName = "Founder",
+            }
+        );
+        Assert.True(result.IsSuccess, result.Message);
+        Assert.Empty(db.Subscriptions.IgnoreQueryFilters().ToList());
     }
 }

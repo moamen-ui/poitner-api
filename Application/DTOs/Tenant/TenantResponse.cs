@@ -49,4 +49,12 @@ public class TenantResponse
     public DateTime? PausedAt { get; set; }
     public bool PausedByOperator { get; set; }
     public DateTime? DeletionScheduledFor { get; set; }
+
+    // DB-20 §3.9 — billing v1: the tenant list's at-a-glance billing state.
+    public string? RequestedPlanName { get; set; }
+    public decimal? QuotedPrice { get; set; }
+    public string? QuotedCurrency { get; set; }
+    public DateTime? CurrentPeriodEnd { get; set; }
+    public bool IsComplimentary { get; set; }
+    public DateTime? CompEndsAt { get; set; }
 }
